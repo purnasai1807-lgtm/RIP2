@@ -320,3 +320,65 @@ class ImpactFeedback(db.Model):
     impact = db.relationship('Impact', backref=db.backref('feedback', cascade='all, delete-orphan', lazy=True))
     user = db.relationship('User', backref=db.backref('impact_feedback', cascade='all, delete-orphan', lazy=True))
     __table_args__ = (db.UniqueConstraint('impact_id', 'user_id', name='uq_impact_feedback_user'),)
+
+
+class CampusActivity(db.Model):
+    """An operational activity that may be affected by a campus incident."""
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(32), unique=True, nullable=False, index=True)
+    name = db.Column(db.String(140), nullable=False, index=True)
+    activity_type = db.Column(db.String(32), nullable=False, default='Class')
+    location = db.Column(db.String(120), nullable=False, default='')
+    expected_attendance = db.Column(db.Integer, nullable=False, default=0)
+    criticality = db.Column(db.String(16), nullable=False, default='Medium')
+    status = db.Column(db.String(20), nullable=False, default='Scheduled')
+    start_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    end_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    notes = db.Column(db.Text, nullable=False, default='')
+    created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class CampusResource(db.Model):
+    """A shared campus resource such as a room, service, or equipment item."""
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(32), unique=True, nullable=False, index=True)
+    name = db.Column(db.String(140), nullable=False, index=True)
+    resource_type = db.Column(db.String(32), nullable=False, default='Room')
+    location = db.Column(db.String(120), nullable=False, default='')
+    capacity = db.Column(db.Integer, nullable=False, default=0)
+    status = db.Column(db.String(20), nullable=False, default='Available')
+    notes = db.Column(db.Text, nullable=False, default='')
+    created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class ActivityDependency(db.Model):
+    """Directed dependency: source item requires a target item."""
+    id = db.Column(db.Integer, primary_key=True)
+    source_activity_id = db.Column(db.Integer, db.ForeignKey('campus_activity.id', ondelete='CASCADE'), nullable=False, index=True)
+    target_resource_id = db.Column(db.Integer, db.ForeignKey('campus_resource.id', ondelete='CASCADE'), nullable=True, index=True)
+    target_activity_id = db.Column(db.Integer, db.ForeignKey('campus_activity.id', ondelete='CASCADE'), nullable=True, index=True)
+    dependency_type = db.Column(db.String(24), nullable=False, default='requires')
+    importance = db.Column(db.String(16), nullable=False, default='Required')
+    notes = db.Column(db.String(500), nullable=False, default='')
+    created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    source_activity = db.relationship('CampusActivity', foreign_keys=[source_activity_id], backref=db.backref('outgoing_dependencies', cascade='all, delete-orphan', lazy=True))
+    target_activity = db.relationship('CampusActivity', foreign_keys=[target_activity_id], backref=db.backref('incoming_dependencies', cascade='all, delete-orphan', lazy=True))
+    target_resource = db.relationship('CampusResource', backref=db.backref('activity_dependencies', cascade='all, delete-orphan', lazy=True))
+    __table_args__ = (
+        db.CheckConstraint('(target_resource_id IS NOT NULL AND target_activity_id IS NULL) OR (target_resource_id IS NULL AND target_activity_id IS NOT NULL)', name='ck_activity_dependency_one_target'),
+        db.UniqueConstraint('source_activity_id', 'target_resource_id', 'target_activity_id', name='uq_activity_dependency_target'),
+    )
+
+
+class ResourceConstraint(db.Model):
+    """Explicit operational constraint attached to a resource."""
+    id = db.Column(db.Integer, primary_key=True)
+    resource_id = db.Column(db.Integer, db.ForeignKey('campus_resource.id', ondelete='CASCADE'), nullable=False, index=True)
+    constraint_type = db.Column(db.String(32), nullable=False)
+    operator = db.Column(db.String(12), nullable=False, default='<=')
+    limit_value = db.Column(db.String(120), nullable=False)
+    unit = db.Column(db.String(24), nullable=False, default='')
+    is_hard_constraint = db.Column(db.Boolean, nullable=False, default=True)
+    notes = db.Column(db.String(500), nullable=False, default='')
+    created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
+    resource = db.relationship('CampusResource', backref=db.backref('constraints', cascade='all, delete-orphan', lazy=True))

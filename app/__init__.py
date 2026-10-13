@@ -16,36 +16,14 @@ login_manager.login_message_category = "info"
 
 def create_app(test_config=None):
     app = Flask(__name__, instance_relative_config=True)
-    # Vercel's Neon integration may expose several equivalent PostgreSQL variables.
-    # Prefer the app's explicit DATABASE_URL; otherwise fall back to common Neon/Vercel
-    # names. On Vercel, do not silently fall back to a local SQLite file because the
-    # serverless filesystem is ephemeral and production requires a persistent database.
-    runtime_env = os.environ.get('APP_ENV', 'production' if os.environ.get('VERCEL') else 'development').lower()
-    database_url = (
-        os.environ.get("DATABASE_URL")
-        or os.environ.get("POSTGRES_URL")
-        or os.environ.get("POSTGRES_PRISMA_URL")
-        or os.environ.get("POSTGRES_URL_NON_POOLING")
-        or os.environ.get("DATABASE_URL_UNPOOLED")
-        or os.environ.get("POSTGRES_URL_NO_SSL")
-        or os.environ.get("POSTGRES_URL_NO_POOLING")
-        or os.environ.get("POSTGRES_PRISMA_URL_NON_POOLING")
-    )
-    if not database_url:
-        if os.environ.get('VERCEL') or runtime_env == 'production':
-            raise RuntimeError(
-                'Missing DATABASE_URL. In Vercel, add DATABASE_URL using your Neon pooled PostgreSQL connection string.'
-            )
-        database_url = "sqlite:///decision_impact.db"
+    database_url = os.environ.get("DATABASE_URL", "sqlite:///decision_impact.db")
     if database_url.startswith('postgres://'):
         database_url = 'postgresql+psycopg://' + database_url[len('postgres://'):]
     elif database_url.startswith('postgresql://'):
         database_url = 'postgresql+psycopg://' + database_url[len('postgresql://'):]
-    elif database_url.startswith('postgresql+psycopg://'):
-        pass
     app.config.from_mapping(
         SECRET_KEY=os.environ.get("SECRET_KEY", "dev-only-change-this-secret"),
-        APP_ENV=runtime_env,
+        APP_ENV=os.environ.get('APP_ENV', 'development').lower(),
         SQLALCHEMY_DATABASE_URI=database_url,
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         SESSION_COOKIE_HTTPONLY=True,
@@ -62,7 +40,7 @@ def create_app(test_config=None):
         MAIL_PASSWORD=os.environ.get('MAIL_PASSWORD', ''),
         MAIL_DEFAULT_SENDER=os.environ.get('MAIL_DEFAULT_SENDER', ''),
         PUBLIC_BASE_URL=os.environ.get('PUBLIC_BASE_URL') or (('https://' + os.environ['VERCEL_PROJECT_PRODUCTION_URL']) if os.environ.get('VERCEL_PROJECT_PRODUCTION_URL') else 'http://127.0.0.1:5000'),
-        REQUIRE_EMAIL_VERIFICATION=os.environ.get('REQUIRE_EMAIL_VERIFICATION', 'true' if (runtime_env == 'production' and os.environ.get('MAIL_SERVER')) else 'false').lower() == 'true',
+        REQUIRE_EMAIL_VERIFICATION=os.environ.get('REQUIRE_EMAIL_VERIFICATION', 'true' if os.environ.get('APP_ENV', 'development').lower() == 'production' else 'false').lower() == 'true',
         INSTITUTIONAL_EMAIL_DOMAINS=tuple(domain.strip().lower().lstrip('@') for domain in os.environ.get('INSTITUTIONAL_EMAIL_DOMAINS', '').split(',') if domain.strip()),
         COLLEGE_DATA_API_URL=os.environ.get('COLLEGE_DATA_API_URL', ''),
         COLLEGE_DATA_API_TOKEN=os.environ.get('COLLEGE_DATA_API_TOKEN', ''),
@@ -94,6 +72,10 @@ def create_app(test_config=None):
             raise RuntimeError('Production requires PostgreSQL; SQLite is only for local development and lightweight tests.')
         if not app.config.get('SESSION_COOKIE_SECURE'):
             raise RuntimeError('Production requires COOKIE_SECURE=true and HTTPS at the public endpoint.')
+        if app.config.get('REQUIRE_EMAIL_VERIFICATION') and not (app.config.get('MAIL_SERVER') and app.config.get('MAIL_DEFAULT_SENDER')):
+            raise RuntimeError('Production email verification requires MAIL_SERVER and MAIL_DEFAULT_SENDER.')
+        if app.config.get('REQUIRE_EMAIL_VERIFICATION') and ('.example' in str(app.config.get('MAIL_SERVER', '')).lower() or '@example.com' in str(app.config.get('MAIL_DEFAULT_SENDER', '')).lower()):
+            raise RuntimeError('Replace example SMTP settings with a real provider configuration before production.')
         public_url = str(app.config.get('PUBLIC_BASE_URL', '')).lower()
         if app.config.get('REQUIRE_EMAIL_VERIFICATION') and (not public_url.startswith('https://') or '.example' in public_url or 'localhost' in public_url):
             raise RuntimeError('Production email verification requires PUBLIC_BASE_URL to use your real HTTPS domain.')

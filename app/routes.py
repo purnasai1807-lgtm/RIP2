@@ -17,7 +17,7 @@ from werkzeug.exceptions import HTTPException
 from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError
 from . import db
-from .models import User, Scenario, Impact, Department, Course, Room, TimetableEntry, AuditEvent, ExamSchedule, CampusEvent, AcademicCalendarItem, MaintenanceRequest, AttendanceSession, AttendanceRecord, InventoryItem, Announcement, ServiceRequest, FacultySubstitution, InvigilatorAssignment, InAppNotification, LoginAttempt, IntegrationSyncRun, ImpactFeedback
+from .models import User, Scenario, Impact, Department, Course, Room, TimetableEntry, AuditEvent, ExamSchedule, CampusEvent, AcademicCalendarItem, MaintenanceRequest, AttendanceSession, AttendanceRecord, InventoryItem, Announcement, ServiceRequest, FacultySubstitution, InvigilatorAssignment, InAppNotification, LoginAttempt, IntegrationSyncRun, ImpactFeedback, CampusActivity, CampusResource, ActivityDependency, ResourceConstraint
 from .engine import analyze, RULE_VERSION
 
 DOMAINS = ['Timetable & classrooms', 'Exams & academics', 'Campus facilities', 'College events & clubs', 'Transport & attendance', 'Budget & procurement', 'General college decision']
@@ -267,6 +267,317 @@ def register_routes(app):
     app.jinja_env.globals['csrf_token'] = csrf_token
     app.jinja_env.globals['domains'] = DOMAINS
     app.jinja_env.globals['variables'] = VARIABLES
+
+    @app.get('/campus-model')
+    @login_required
+    def campus_model():
+        activities = CampusActivity.query.order_by(CampusActivity.name).all()
+        resources = CampusResource.query.order_by(CampusResource.name).all()
+        dependencies = ActivityDependency.query.order_by(ActivityDependency.id.desc()).all()
+        constraints = ResourceConstraint.query.order_by(ResourceConstraint.id.desc()).all()
+        can_manage = current_user.role in ('coordinator', 'admin')
+        return render_template('campus_model.html', activities=activities, resources=resources,
+                               dependencies=dependencies, constraints=constraints, can_manage=can_manage)
+
+    @app.post('/campus-model/activities')
+    @login_required
+    def add_campus_activity():
+        require_roles('coordinator', 'admin')
+        code = request.form.get('code', '').strip().upper()
+        name = request.form.get('name', '').strip()
+        attendance = request.form.get('expected_attendance', '0').strip()
+        if not code or not name or len(code) > 32 or not attendance.isdigit() or int(attendance) > 100000:
+            flash('Enter a unique code, activity name, and valid attendance (0–100000).', 'error')
+            return redirect(url_for('campus_model'))
+        start_raw = request.form.get('start_at', '').strip()
+        end_raw = request.form.get('end_at', '').strip()
+        try:
+            start_at = datetime.fromisoformat(start_raw) if start_raw else None
+            end_at = datetime.fromisoformat(end_raw) if end_raw else None
+        except ValueError:
+            flash('Use valid start and end date/time values.', 'error')
+            return redirect(url_for('campus_model'))
+        if start_at and end_at and end_at <= start_at:
+            flash('Activity end time must be later than its start time.', 'error')
+            return redirect(url_for('campus_model'))
+        activity_type = request.form.get('activity_type', 'Other')
+        criticality = request.form.get('criticality', 'Medium')
+        status = request.form.get('status', 'Scheduled')
+        if activity_type not in ('Lecture', 'Exam', 'Workshop', 'Review', 'Event', 'Service', 'Other') or criticality not in ('Low', 'Medium', 'High', 'Critical') or status not in ('Scheduled', 'In progress', 'Completed', 'Cancelled'):
+            flash('Choose valid activity type, criticality, and status values.', 'error')
+            return redirect(url_for('campus_model'))
+        item = CampusActivity(code=code, name=name[:140], activity_type=activity_type,
+            location=request.form.get('location', '').strip()[:120], expected_attendance=int(attendance),
+            criticality=criticality, status=status, start_at=start_at, end_at=end_at,
+            notes=request.form.get('notes', '').strip()[:2000])
+        db.session.add(item)
+        try:
+            db.session.flush()
+            record_audit('campus_activity_created', 'CampusActivity', item.id, f'Created activity {code}')
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            flash('That activity code already exists. Use a unique code.', 'error')
+            return redirect(url_for('campus_model'))
+        flash('Campus activity saved.', 'success')
+        return redirect(url_for('campus_model'))
+
+    @app.post('/campus-model/resources')
+    @login_required
+    def add_campus_resource():
+        require_roles('coordinator', 'admin')
+        code = request.form.get('code', '').strip().upper()
+        name = request.form.get('name', '').strip()
+        capacity = request.form.get('capacity', '0').strip()
+        if not code or not name or len(code) > 32 or not capacity.isdigit() or int(capacity) > 100000:
+            flash('Enter a unique code, resource name, and valid capacity (0–100000).', 'error')
+            return redirect(url_for('campus_model'))
+        resource_type = request.form.get('resource_type', 'Other')
+        status = request.form.get('status', 'Unknown')
+        if resource_type not in ('Room', 'Equipment', 'Infrastructure', 'Network', 'Power', 'Transport', 'Staff', 'Service', 'Other') or status not in ('Available', 'Limited', 'Unavailable', 'Under maintenance', 'Unknown'):
+            flash('Choose a valid resource type and status.', 'error')
+            return redirect(url_for('campus_model'))
+        item = CampusResource(code=code, name=name[:140], resource_type=resource_type,
+            location=request.form.get('location', '').strip()[:120], capacity=int(capacity),
+            status=status, notes=request.form.get('notes', '').strip()[:2000])
+        db.session.add(item)
+        try:
+            db.session.flush()
+            record_audit('campus_resource_created', 'CampusResource', item.id, f'Created resource {code}')
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            flash('That resource code already exists. Use a unique code.', 'error')
+            return redirect(url_for('campus_model'))
+        flash('Campus resource saved.', 'success')
+        return redirect(url_for('campus_model'))
+
+    @app.post('/campus-model/dependencies')
+    @login_required
+    def add_activity_dependency():
+        require_roles('coordinator', 'admin')
+        source_id = request.form.get('source_activity_id', type=int)
+        target_kind = request.form.get('target_kind', 'resource')
+        target_id = request.form.get('target_id', type=int)
+        source = db.session.get(CampusActivity, source_id) if source_id else None
+        target = (db.session.get(CampusResource, target_id) if target_kind == 'resource' else
+                  db.session.get(CampusActivity, target_id) if target_kind == 'activity' else None)
+        if not source or not target or (target_kind == 'activity' and source.id == target.id):
+            flash('Choose a valid source activity and a different target resource/activity.', 'error')
+            return redirect(url_for('campus_model'))
+        dependency_type = request.form.get('dependency_type', 'requires')
+        importance = request.form.get('importance', 'Required')
+        if dependency_type not in ('requires', 'uses', 'follows', 'supports') or importance not in ('Required', 'Preferred', 'Optional'):
+            flash('Choose a valid dependency relationship and importance.', 'error')
+            return redirect(url_for('campus_model'))
+        # A source activity points to what it depends on. Reject links that would
+        # introduce a directed cycle, which would make ripple explanations ambiguous.
+        if target_kind == 'activity':
+            pending, visited = [target.id], set()
+            while pending:
+                node_id = pending.pop()
+                if node_id == source.id:
+                    flash('This dependency would create a cycle. Remove or change an existing link first.', 'error')
+                    return redirect(url_for('campus_model'))
+                if node_id in visited:
+                    continue
+                visited.add(node_id)
+                pending.extend(d.target_activity_id for d in ActivityDependency.query.filter_by(source_activity_id=node_id).all() if d.target_activity_id is not None)
+        values = dict(source_activity_id=source.id, dependency_type=dependency_type,
+                      importance=importance, notes=request.form.get('notes', '').strip()[:500])
+        if target_kind == 'resource': values['target_resource_id'] = target.id
+        else: values['target_activity_id'] = target.id
+        duplicate = ActivityDependency.query.filter_by(**values).first()
+        if duplicate:
+            flash('That dependency already exists.', 'error')
+            return redirect(url_for('campus_model'))
+        item = ActivityDependency(**values)
+        db.session.add(item)
+        db.session.flush()
+        record_audit('activity_dependency_created', 'ActivityDependency', item.id, f'{source.code} depends on {target.code}')
+        db.session.commit()
+        flash('Dependency saved. It can now be used by impact analysis.', 'success')
+        return redirect(url_for('campus_model'))
+
+    @app.post('/campus-model/constraints')
+    @login_required
+    def add_resource_constraint():
+        require_roles('coordinator', 'admin')
+        resource = db.session.get(CampusResource, request.form.get('resource_id', type=int))
+        constraint_type = request.form.get('constraint_type', '').strip()[:32]
+        limit_value = request.form.get('limit_value', '').strip()[:120]
+        allowed_constraint_types = ('Capacity', 'Availability', 'Power rating', 'Operating hours', 'Safety', 'Equipment count', 'Other')
+        if not resource or constraint_type not in allowed_constraint_types or not limit_value:
+            flash('Choose a valid resource and constraint type, and enter the limit.', 'error')
+            return redirect(url_for('campus_model'))
+        operator = request.form.get('operator', '<=')
+        if operator not in ('<=', '>=', '=', '<', '>'):
+            flash('Choose a valid comparison operator.', 'error')
+            return redirect(url_for('campus_model'))
+        item = ResourceConstraint(resource_id=resource.id, constraint_type=constraint_type, operator=operator,
+            limit_value=limit_value, unit=request.form.get('unit', '').strip()[:24],
+            is_hard_constraint=request.form.get('is_hard_constraint') == 'yes', notes=request.form.get('notes', '').strip()[:500])
+        db.session.add(item)
+        db.session.flush()
+        record_audit('resource_constraint_created', 'ResourceConstraint', item.id, f'Added {constraint_type} constraint to {resource.code}')
+        db.session.commit()
+        flash('Resource constraint saved.', 'success')
+        return redirect(url_for('campus_model'))
+
+    @app.route('/campus-model/activities/<int:activity_id>/edit', methods=['GET', 'POST'])
+    @login_required
+    def edit_campus_activity(activity_id):
+        require_roles('coordinator', 'admin')
+        item = db.session.get(CampusActivity, activity_id)
+        if not item:
+            abort(404)
+        types = ('Lecture', 'Exam', 'Workshop', 'Review', 'Event', 'Service', 'Other')
+        criticalities = ('Low', 'Medium', 'High', 'Critical')
+        statuses = ('Scheduled', 'In progress', 'Completed', 'Cancelled')
+        if request.method == 'POST':
+            code = request.form.get('code', '').strip().upper()
+            name = request.form.get('name', '').strip()
+            attendance = request.form.get('expected_attendance', '').strip()
+            activity_type = request.form.get('activity_type', '')
+            criticality = request.form.get('criticality', '')
+            status = request.form.get('status', '')
+            try:
+                start_at = datetime.fromisoformat(request.form['start_at']) if request.form.get('start_at', '').strip() else None
+                end_at = datetime.fromisoformat(request.form['end_at']) if request.form.get('end_at', '').strip() else None
+            except ValueError:
+                flash('Enter valid start and end date/time values.', 'error')
+                return redirect(url_for('edit_campus_activity', activity_id=item.id))
+            if (not code or len(code) > 32 or not name or len(name) > 140 or not attendance.isdigit()
+                    or int(attendance) > 100000 or activity_type not in types or criticality not in criticalities
+                    or status not in statuses or (start_at and end_at and end_at <= start_at)):
+                flash('Check the activity fields; values, attendance, and time range must be valid.', 'error')
+                return redirect(url_for('edit_campus_activity', activity_id=item.id))
+            item.code, item.name, item.activity_type = code, name, activity_type
+            item.location = request.form.get('location', '').strip()[:120]
+            item.expected_attendance, item.criticality, item.status = int(attendance), criticality, status
+            item.start_at, item.end_at = start_at, end_at
+            item.notes = request.form.get('notes', '').strip()[:2000]
+            try:
+                db.session.flush()
+                record_audit('campus_activity_updated', 'CampusActivity', item.id, f'Updated activity {code}')
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+                flash('That activity code is already used by another activity.', 'error')
+                return redirect(url_for('edit_campus_activity', activity_id=item.id))
+            flash('Campus activity updated.', 'success')
+            return redirect(url_for('campus_model'))
+        fields = [
+            {'name':'code','label':'Activity code','value':item.code,'required':True,'maxlength':32},
+            {'name':'name','label':'Activity name','value':item.name,'required':True,'maxlength':140},
+            {'name':'activity_type','label':'Type','value':item.activity_type,'options':types},
+            {'name':'location','label':'Location','value':item.location,'maxlength':120},
+            {'name':'start_at','label':'Start date/time','value':item.start_at.strftime('%Y-%m-%dT%H:%M') if item.start_at else '', 'kind':'datetime-local'},
+            {'name':'end_at','label':'End date/time','value':item.end_at.strftime('%Y-%m-%dT%H:%M') if item.end_at else '', 'kind':'datetime-local'},
+            {'name':'expected_attendance','label':'Expected attendance','value':item.expected_attendance,'kind':'number','min':0,'required':True},
+            {'name':'criticality','label':'Criticality','value':item.criticality,'options':criticalities},
+            {'name':'status','label':'Status','value':item.status,'options':statuses},
+            {'name':'notes','label':'Notes','value':item.notes,'kind':'textarea','maxlength':2000},
+        ]
+        return render_template('campus_record_edit.html', record_type='activity', fields=fields)
+
+    @app.route('/campus-model/resources/<int:resource_id>/edit', methods=['GET', 'POST'])
+    @login_required
+    def edit_campus_resource(resource_id):
+        require_roles('coordinator', 'admin')
+        item = db.session.get(CampusResource, resource_id)
+        if not item:
+            abort(404)
+        types = ('Room', 'Equipment', 'Infrastructure', 'Network', 'Power', 'Transport', 'Staff', 'Service', 'Other')
+        statuses = ('Available', 'Limited', 'Unavailable', 'Under maintenance', 'Unknown')
+        if request.method == 'POST':
+            code = request.form.get('code', '').strip().upper()
+            name = request.form.get('name', '').strip()
+            capacity = request.form.get('capacity', '').strip()
+            resource_type = request.form.get('resource_type', '')
+            status = request.form.get('status', '')
+            if (not code or len(code) > 32 or not name or len(name) > 140 or not capacity.isdigit()
+                    or int(capacity) > 100000 or resource_type not in types or status not in statuses):
+                flash('Check the resource fields and enter a valid capacity (0–100000).', 'error')
+                return redirect(url_for('edit_campus_resource', resource_id=item.id))
+            item.code, item.name, item.resource_type = code, name, resource_type
+            item.location = request.form.get('location', '').strip()[:120]
+            item.capacity, item.status = int(capacity), status
+            item.notes = request.form.get('notes', '').strip()[:2000]
+            try:
+                db.session.flush()
+                record_audit('campus_resource_updated', 'CampusResource', item.id, f'Updated resource {code}')
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+                flash('That resource code is already used by another resource.', 'error')
+                return redirect(url_for('edit_campus_resource', resource_id=item.id))
+            flash('Campus resource updated.', 'success')
+            return redirect(url_for('campus_model'))
+        fields = [
+            {'name':'code','label':'Resource code','value':item.code,'required':True,'maxlength':32},
+            {'name':'name','label':'Resource name','value':item.name,'required':True,'maxlength':140},
+            {'name':'resource_type','label':'Type','value':item.resource_type,'options':types},
+            {'name':'location','label':'Location','value':item.location,'maxlength':120},
+            {'name':'capacity','label':'Capacity','value':item.capacity,'kind':'number','min':0,'required':True},
+            {'name':'status','label':'Status','value':item.status,'options':statuses},
+            {'name':'notes','label':'Notes','value':item.notes,'kind':'textarea','maxlength':2000},
+        ]
+        return render_template('campus_record_edit.html', record_type='resource', fields=fields)
+
+    @app.post('/campus-model/dependencies/<int:dependency_id>/delete')
+    @login_required
+    def delete_activity_dependency(dependency_id):
+        require_roles('coordinator', 'admin')
+        item = db.session.get(ActivityDependency, dependency_id)
+        if not item:
+            abort(404)
+        record_audit('activity_dependency_deleted', 'ActivityDependency', item.id, 'Deleted campus dependency')
+        db.session.delete(item)
+        db.session.commit()
+        flash('Dependency deleted.', 'success')
+        return redirect(url_for('campus_model'))
+
+    @app.post('/campus-model/constraints/<int:constraint_id>/delete')
+    @login_required
+    def delete_resource_constraint(constraint_id):
+        require_roles('coordinator', 'admin')
+        item = db.session.get(ResourceConstraint, constraint_id)
+        if not item:
+            abort(404)
+        record_audit('resource_constraint_deleted', 'ResourceConstraint', item.id, 'Deleted resource constraint')
+        db.session.delete(item)
+        db.session.commit()
+        flash('Resource constraint deleted.', 'success')
+        return redirect(url_for('campus_model'))
+
+    @app.post('/campus-model/activities/<int:activity_id>/delete')
+    @login_required
+    def delete_campus_activity(activity_id):
+        require_roles('coordinator', 'admin')
+        item = db.session.get(CampusActivity, activity_id)
+        if not item:
+            abort(404)
+        code = item.code
+        record_audit('campus_activity_deleted', 'CampusActivity', item.id, f'Deleted activity {code}')
+        db.session.delete(item)
+        db.session.commit()
+        flash('Activity deleted; its dependency links were removed.', 'success')
+        return redirect(url_for('campus_model'))
+
+    @app.post('/campus-model/resources/<int:resource_id>/delete')
+    @login_required
+    def delete_campus_resource(resource_id):
+        require_roles('coordinator', 'admin')
+        item = db.session.get(CampusResource, resource_id)
+        if not item:
+            abort(404)
+        code = item.code
+        record_audit('campus_resource_deleted', 'CampusResource', item.id, f'Deleted resource {code}')
+        db.session.delete(item)
+        db.session.commit()
+        flash('Resource deleted; its dependency links and constraints were removed.', 'success')
+        return redirect(url_for('campus_model'))
 
     @app.before_request
     def begin_request_timing():

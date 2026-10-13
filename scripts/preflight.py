@@ -21,7 +21,7 @@ def check_configuration(env: dict[str, str]) -> tuple[list[str], list[str]]:
     secret = env.get("SECRET_KEY", "")
     database_url = env.get("DATABASE_URL", "")
     secure_cookie = env.get("COOKIE_SECURE", "false").strip().lower() == "true"
-    require_verification = env.get("REQUIRE_EMAIL_VERIFICATION", "true" if (production and env.get("MAIL_SERVER")) else "false").strip().lower() == "true"
+    require_verification = env.get("REQUIRE_EMAIL_VERIFICATION", "true" if production else "false").strip().lower() == "true"
     public_url = env.get("PUBLIC_BASE_URL", "")
     mail_server = env.get("MAIL_SERVER", "")
     mail_sender = env.get("MAIL_DEFAULT_SENDER", "")

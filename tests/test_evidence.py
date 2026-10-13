@@ -86,3 +86,15 @@ def test_evidence_input_has_safe_required_text_defaults_and_severity_bounds():
     assert impact['likelihood'] == 'Medium'
     assert impact['cause']
     assert impact['mitigation']
+
+
+def test_phase5_reproducibility_contract_is_documented_and_migrated():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    docs = (root / 'docs' / 'PHASE5_DECISION_INTELLIGENCE.md').read_text(encoding='utf-8')
+    migration = (root / 'migrations' / 'versions' / '20261013_12_analysis_reproducibility.py').read_text(encoding='utf-8')
+    routes = (root / 'app' / 'routes.py').read_text(encoding='utf-8')
+    assert 'deterministic replay' in docs.lower()
+    assert "analysis_input_hash" in migration and "analysis_result_hash" in migration
+    assert "'/scenarios/<int:scenario_id>/verify-analysis'" in routes
+    assert "'/admin/impact-quality/export.csv'" in routes

@@ -255,3 +255,13 @@ External-only blockers remain: actual ACEEC ERP/SIS access requires an authorize
 - The restore verifier now refuses to restore a backup unless its SHA-256 sidecar exists, uses the expected filename/format, and validates successfully before `pg_restore` is invoked.
 - Added dependency-light subprocess tests for same-database refusal across PostgreSQL driver-prefix variants, explicit disposable-target confirmation, missing checksum refusal, and tampered-backup detection.
 - These checks do not replace a live PostgreSQL restore drill; the live restore remains an integration acceptance gate.
+
+## Phase 5 — decision intelligence and reproducibility (2026-10-13)
+
+- Persisted canonical input/evidence snapshots plus SHA-256 input and output fingerprints for new analysis runs.
+- Added authorized reproducibility verification endpoint (`GET /scenarios/<id>/verify-analysis`) that checks snapshot integrity, saved output integrity, and deterministic replay against the same captured evidence.
+- Added fingerprints and snapshot availability to JSON exports and fingerprints to the scenario analysis header.
+- Added admin-only labeled feedback CSV export for offline evaluation. Quality reporting explicitly distinguishes user feedback from independently verified ground truth and does not claim unmeasured accuracy.
+- Added migration `20261013_12_analysis_reproducibility.py` and Phase 5 evaluation protocol documentation.
+- Checks performed: compileall passed; 28 Jinja templates parsed; migration chain has 12 revisions and one linear root; focused tests passed (18 passed).
+- Full Flask application tests, database migration execution, browser end-to-end verification, and production integration tests remain unverified because Flask is not installed in the authoring environment. Run migrations and the full test suite in the configured runtime before production use.

@@ -431,3 +431,7 @@ See `DATASET_INTEGRATION_REPORT.md` for counts, results, and limitations. Impact
 ## Phase 4 — multi-level ripple analysis
 
 Open an incident and choose **Run ripple analysis** to trace potential consequences across multiple dependency levels. The analysis follows explicit resource/activity links, shows each causal path and source record, consolidates duplicates, prioritizes review, and suggests verification steps. It never automatically cancels an activity or changes campus status. See [`docs/PHASE4_RIPPLE_ANALYSIS.md`](docs/PHASE4_RIPPLE_ANALYSIS.md).
+
+### Phase 5 decision intelligence
+
+New analyses preserve a canonical input/evidence snapshot and fingerprints for reproducibility. After running an analysis, use **Verify analysis** on its detail page (or `GET /scenarios/<id>/verify-analysis`) to verify the saved inputs and results against deterministic replay. Admins can export reviewed labels from **Impact quality** for offline evaluation. Human feedback is not ground truth by itself; no model accuracy is claimed without a separately adjudicated held-out evaluation set. See `docs/PHASE5_DECISION_INTELLIGENCE.md`.

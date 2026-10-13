@@ -26,6 +26,17 @@ DOMAINS = ['Timetable & classrooms', 'Exams & academics', 'Campus facilities', '
 VARIABLES = ['Date', 'Time', 'Resource', 'Capacity', 'Budget', 'Staffing', 'Delivery time', 'Release date']
 ALLOWED_EMAIL_DOMAIN = 'aceec.ac.in'
 
+def _canonical_json(value):
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'), default=str)
+
+def _sha256_json(value):
+    return hashlib.sha256(_canonical_json(value).encode('utf-8')).hexdigest()
+
+def _impact_snapshot(item):
+    keys = ('level', 'activity', 'description', 'cause', 'severity', 'likelihood',
+            'mitigation', 'source', 'parent_activity', 'evidence_ref')
+    return {key: getattr(item, key, None) if not isinstance(item, dict) else item.get(key) for key in keys}
+
 
 def is_eligible_college_email(email):
     """Accept syntactically plausible addresses on the exact ACEEC domain only."""
@@ -2150,6 +2161,28 @@ def register_routes(app):
         flash('Thank you. Your impact review has been recorded for quality evaluation.', 'success')
         return redirect(url_for('scenario_detail', scenario_id=scenario.id) + f'#impact-{impact.id}')
 
+    @app.get('/admin/impact-quality/export.csv')
+    @login_required
+    def admin_impact_quality_export():
+        require_roles('admin')
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['feedback_id', 'impact_id', 'scenario_id', 'analysis_version', 'assessment',
+                         'impact_source', 'impact_level', 'severity', 'evidence_ref', 'observed_outcome',
+                         'created_at_utc', 'updated_at_utc'])
+        for feedback in ImpactFeedback.query.order_by(ImpactFeedback.created_at.asc()).yield_per(500):
+            impact = feedback.impact
+            writer.writerow([feedback.id, feedback.impact_id, impact.scenario_id, feedback.analysis_version,
+                             feedback.assessment, impact.source, impact.level, impact.severity,
+                             impact.evidence_ref or '', feedback.observed_outcome,
+                             feedback.created_at.isoformat() if feedback.created_at else '',
+                             feedback.updated_at.isoformat() if feedback.updated_at else ''])
+        response = make_response('\ufeff' + output.getvalue())
+        response.headers['Content-Type'] = 'text/csv; charset=utf-8'
+        response.headers['Content-Disposition'] = 'attachment; filename="campusripple-impact-feedback-evaluation.csv"'
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+
     @app.get('/admin/impact-quality')
     @login_required
     def admin_impact_quality():
@@ -2167,10 +2200,23 @@ def register_routes(app):
     @login_required
     def analyze_scenario(scenario_id):
         scenario = owned_scenario(scenario_id)
+        evidence = collect_impact_evidence(scenario.domain, scenario.change_variable, scenario.current_value, scenario.proposed_value, scenario.context)
+        inputs = {
+            'schema_version': 'phase5-input-v1',
+            'rule_version': RULE_VERSION,
+            'scenario': {'title': scenario.title, 'domain': scenario.domain,
+                         'change_variable': scenario.change_variable, 'current_value': scenario.current_value,
+                         'proposed_value': scenario.proposed_value, 'context': scenario.context},
+            'evidence': evidence,
+        }
+        result = analyze(scenario.domain, scenario.change_variable, scenario.current_value, scenario.proposed_value, scenario.context, evidence)
         scenario.impacts.clear()
         db.session.flush()
-        for item in analyze(scenario.domain, scenario.change_variable, scenario.current_value, scenario.proposed_value, scenario.context, collect_impact_evidence(scenario.domain, scenario.change_variable, scenario.current_value, scenario.proposed_value, scenario.context)):
+        for item in result:
             db.session.add(Impact(scenario_id=scenario.id, **item))
+        scenario.analysis_inputs_json = _canonical_json(inputs)
+        scenario.analysis_input_hash = _sha256_json(inputs)
+        scenario.analysis_result_hash = _sha256_json([_impact_snapshot(item) for item in result])
         scenario.status = 'Analyzed'
         scenario.analysis_version = RULE_VERSION
         scenario.analyzed_at = datetime.now(timezone.utc)
@@ -2178,6 +2224,38 @@ def register_routes(app):
         db.session.commit()
         flash('Analysis completed. Review the impact chain and validate assumptions before acting.', 'success')
         return redirect(url_for('scenario_detail', scenario_id=scenario.id))
+
+    @app.get('/scenarios/<int:scenario_id>/verify-analysis')
+    @login_required
+    def verify_scenario_analysis(scenario_id):
+        scenario = owned_scenario(scenario_id)
+        if not scenario.analysis_inputs_json or not scenario.analysis_input_hash or not scenario.analysis_result_hash:
+            return {'verified': False, 'status': 'legacy_analysis',
+                    'message': 'This analysis predates reproducibility snapshots. Re-run analysis to create one.'}, 409
+        try:
+            inputs = json.loads(scenario.analysis_inputs_json)
+        except (TypeError, ValueError):
+            return {'verified': False, 'status': 'invalid_snapshot', 'message': 'Stored input snapshot is not valid JSON.'}, 409
+        input_hash_matches = _sha256_json(inputs) == scenario.analysis_input_hash
+        replay = analyze(inputs['scenario']['domain'], inputs['scenario']['change_variable'],
+                         inputs['scenario']['current_value'], inputs['scenario']['proposed_value'],
+                         inputs['scenario'].get('context', ''), inputs.get('evidence', []))
+        replay_hash = _sha256_json([_impact_snapshot(item) for item in replay])
+        stored_hash_matches = _sha256_json([_impact_snapshot(item) for item in scenario.impacts]) == scenario.analysis_result_hash
+        replay_matches = replay_hash == scenario.analysis_result_hash
+        return {
+            'verified': bool(input_hash_matches and stored_hash_matches and replay_matches),
+            'status': 'verified' if input_hash_matches and stored_hash_matches and replay_matches else 'mismatch',
+            'analysis_version': scenario.analysis_version,
+            'analyzed_at': scenario.analyzed_at.isoformat() if scenario.analyzed_at else None,
+            'input_hash': scenario.analysis_input_hash,
+            'stored_result_hash': scenario.analysis_result_hash,
+            'replayed_result_hash': replay_hash,
+            'checks': {'input_snapshot_integrity': input_hash_matches,
+                       'stored_result_integrity': stored_hash_matches,
+                       'deterministic_replay_match': replay_matches},
+            'message': 'Hashes confirm the saved input, saved impacts, and deterministic replay match.' if input_hash_matches and stored_hash_matches and replay_matches else 'The saved analysis did not pass every integrity check. Re-run and review before relying on it.'
+        }
 
     @app.post('/scenarios/<int:scenario_id>/simulate')
     @login_required
@@ -2279,6 +2357,9 @@ def register_routes(app):
                 'updated_at': scenario.updated_at.isoformat() if scenario.updated_at else None,
                 'analyzed_at': scenario.analyzed_at.isoformat() if scenario.analyzed_at else None,
                 'analysis_version': scenario.analysis_version,
+                'analysis_input_hash': scenario.analysis_input_hash,
+                'analysis_result_hash': scenario.analysis_result_hash,
+                'reproducibility_snapshot_available': bool(scenario.analysis_inputs_json),
             },
             'summary': {
                 'total_impacts': len(scenario.impacts),

@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CHECKS = [
     ("Python syntax compilation", [sys.executable, "-m", "compileall", "-q", "app", "migrations", "tests", "scripts"]),
     ("Migration graph", [sys.executable, "scripts/validate_migration_graph.py"]),
-    ("Dependency-light tests", [sys.executable, "-m", "pytest", "-q", "tests/test_evidence.py", "tests/test_college_source.py", "tests/test_preflight.py", "tests/test_impact_evaluation.py", "tests/test_smtp_probe.py", "tests/test_backup_restore_guard.py", "tests/test_route_authorization_static.py"]),
+    ("Dependency-light tests", [sys.executable, "-m", "pytest", "-q", "tests_light/test_evidence.py", "tests_light/test_college_source.py", "tests_light/test_preflight.py", "tests_light/test_impact_evaluation.py", "tests_light/test_smtp_probe.py", "tests_light/test_backup_restore_guard.py", "tests_light/test_route_authorization_static.py", "tests_light/test_email_policy_static.py"]),
 ]
 
 def main() -> int:

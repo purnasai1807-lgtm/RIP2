@@ -17,7 +17,7 @@ ROUTE_DECORATOR_METHODS = {"route", "get", "post", "put", "patch", "delete"}
 PUBLIC_ROUTE_FUNCTIONS = {
     # Intentionally public infrastructure and authentication endpoints.
     "livez", "healthz", "index", "register", "verify_email",
-    "resend_verification", "forgot_password", "reset_password", "auth_login",
+    "resend_verification", "forgot_password", "reset_password", "auth_login", "readiness_probe",
 }
 ADMIN_ONLY_FUNCTIONS = {
     "admin_users", "admin_integrations", "admin_set_role", "admin_audit",

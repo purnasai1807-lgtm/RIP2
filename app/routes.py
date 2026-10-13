@@ -44,12 +44,18 @@ def _impact_snapshot(item):
 
 
 def is_eligible_college_email(email):
-    """Accept syntactically plausible addresses on the exact ACEEC domain only."""
+    """Accept ACEEC accounts; permit localhost.test only in non-production development.
+
+    The localhost.test exception exists solely so the documented local Docker profile can
+    create and sign into its first administrator without a real institutional mailbox.
+    Production always requires the exact ACEEC domain.
+    """
     normalized = str(email or '').strip().lower()
     if len(normalized) > 254 or normalized.count('@') != 1:
         return False
     local_part, domain = normalized.rsplit('@', 1)
-    if domain != ALLOWED_EMAIL_DOMAIN or not local_part or len(local_part) > 64:
+    local_dev_domain = domain == 'localhost.test' and os.environ.get('APP_ENV', 'development').lower() != 'production'
+    if (domain != ALLOWED_EMAIL_DOMAIN and not local_dev_domain) or not local_part or len(local_part) > 64:
         return False
     # A conservative dot-atom check avoids whitespace, control characters, and
     # malformed dotted local parts without adding an unconfigured dependency.

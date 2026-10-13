@@ -38,6 +38,10 @@ The `docs/hackathon/` directory contains a judge demo runbook, pitch brief, arch
 - PostgreSQL via Docker Compose; SQLite fallback for local development and tests.
 - Automated tests for registration, password validation, impact depth, private scenario access, and CSRF enforcement.
 
+## Fastest launch (Windows)
+
+Extract the project folder and double-click `START_RIPPLE111.bat`. It creates `.venv`, installs `requirements.txt`, performs a syntax check, and launches the local Flask server at `http://127.0.0.1:5000`. First launch requires internet access for package installation. See [`PHASES_AND_STARTUP.md`](PHASES_AND_STARTUP.md) for the phase index and alternate OS instructions.
+
 ## Quick local launch (Docker Compose)
 
 For a repeatable local setup with PostgreSQL, migrations, and the web service, use the local-only Compose file. This profile intentionally disables email verification and uses HTTP cookies for localhost; it is **not** a production profile.

@@ -382,3 +382,42 @@ class ResourceConstraint(db.Model):
     notes = db.Column(db.String(500), nullable=False, default='')
     created_at = db.Column(db.DateTime(timezone=True), default=utcnow, nullable=False)
     resource = db.relationship('CampusResource', backref=db.backref('constraints', cascade='all, delete-orphan', lazy=True))
+
+
+class CampusIncident(db.Model):
+    """A reported campus disruption and its current operational state."""
+    id = db.Column(db.Integer, primary_key=True)
+    incident_code = db.Column(db.String(24), unique=True, nullable=False, index=True)
+    title = db.Column(db.String(160), nullable=False, index=True)
+    description = db.Column(db.Text, nullable=False)
+    incident_type = db.Column(db.String(32), nullable=False, default='Other', index=True)
+    severity = db.Column(db.String(16), nullable=False, default='Medium', index=True)
+    status = db.Column(db.String(20), nullable=False, default='Reported', index=True)
+    location = db.Column(db.String(160), nullable=False, default='')
+    resource_id = db.Column(db.Integer, db.ForeignKey('campus_resource.id', ondelete='SET NULL'), nullable=True, index=True)
+    activity_id = db.Column(db.Integer, db.ForeignKey('campus_activity.id', ondelete='SET NULL'), nullable=True, index=True)
+    reported_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    reported_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+    started_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
+    estimated_duration_minutes = db.Column(db.Integer, nullable=True)
+    resolved_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
+    last_updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow, index=True)
+    reporter = db.relationship('User', foreign_keys=[reported_by_id])
+    resource = db.relationship('CampusResource')
+    activity = db.relationship('CampusActivity')
+    updates = db.relationship('IncidentUpdate', backref='incident', cascade='all, delete-orphan', lazy=True, order_by='IncidentUpdate.created_at.desc()')
+
+
+class IncidentUpdate(db.Model):
+    """Append-only history for status, ETA and incident-detail changes."""
+    id = db.Column(db.Integer, primary_key=True)
+    incident_id = db.Column(db.Integer, db.ForeignKey('campus_incident.id', ondelete='CASCADE'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    update_type = db.Column(db.String(24), nullable=False, default='Note')
+    previous_status = db.Column(db.String(20), nullable=True)
+    new_status = db.Column(db.String(20), nullable=True)
+    previous_duration_minutes = db.Column(db.Integer, nullable=True)
+    new_duration_minutes = db.Column(db.Integer, nullable=True)
+    note = db.Column(db.String(2000), nullable=False, default='')
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+    user = db.relationship('User')

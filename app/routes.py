@@ -17,7 +17,7 @@ from werkzeug.exceptions import HTTPException
 from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError
 from . import db
-from .models import User, Scenario, Impact, Department, Course, Room, TimetableEntry, AuditEvent, ExamSchedule, CampusEvent, AcademicCalendarItem, MaintenanceRequest, AttendanceSession, AttendanceRecord, InventoryItem, Announcement, ServiceRequest, FacultySubstitution, InvigilatorAssignment, InAppNotification, LoginAttempt, IntegrationSyncRun, ImpactFeedback, CampusActivity, CampusResource, ActivityDependency, ResourceConstraint
+from .models import User, Scenario, Impact, Department, Course, Room, TimetableEntry, AuditEvent, ExamSchedule, CampusEvent, AcademicCalendarItem, MaintenanceRequest, AttendanceSession, AttendanceRecord, InventoryItem, Announcement, ServiceRequest, FacultySubstitution, InvigilatorAssignment, InAppNotification, LoginAttempt, IntegrationSyncRun, ImpactFeedback, CampusActivity, CampusResource, ActivityDependency, ResourceConstraint, CampusIncident, IncidentUpdate
 from .engine import analyze, RULE_VERSION
 
 DOMAINS = ['Timetable & classrooms', 'Exams & academics', 'Campus facilities', 'College events & clubs', 'Transport & attendance', 'Budget & procurement', 'General college decision']
@@ -267,6 +267,206 @@ def register_routes(app):
     app.jinja_env.globals['csrf_token'] = csrf_token
     app.jinja_env.globals['domains'] = DOMAINS
     app.jinja_env.globals['variables'] = VARIABLES
+
+    INCIDENT_TYPES = ('Power', 'Network', 'Water', 'Fire/Safety', 'Facilities', 'Transport', 'Staffing', 'Other')
+    INCIDENT_SEVERITIES = ('Low', 'Medium', 'High', 'Critical')
+    INCIDENT_STATUSES = ('Reported', 'Investigating', 'Monitoring', 'Resolved', 'False alarm')
+
+    def incident_payload(item, include_updates=False):
+        data = {
+            'id': item.id, 'incident_code': item.incident_code, 'title': item.title,
+            'description': item.description, 'incident_type': item.incident_type,
+            'severity': item.severity, 'status': item.status, 'location': item.location,
+            'resource_id': item.resource_id, 'resource_code': item.resource.code if item.resource else None,
+            'activity_id': item.activity_id, 'activity_code': item.activity.code if item.activity else None,
+            'reported_by': item.reporter.name if item.reporter else None,
+            'reported_at': as_utc(item.reported_at).isoformat() if item.reported_at else None,
+            'started_at': as_utc(item.started_at).isoformat() if item.started_at else None,
+            'estimated_duration_minutes': item.estimated_duration_minutes,
+            'resolved_at': as_utc(item.resolved_at).isoformat() if item.resolved_at else None,
+            'last_updated_at': as_utc(item.last_updated_at).isoformat() if item.last_updated_at else None,
+        }
+        if include_updates:
+            data['updates'] = [{'id': u.id, 'update_type': u.update_type, 'previous_status': u.previous_status,
+                'new_status': u.new_status, 'previous_duration_minutes': u.previous_duration_minutes,
+                'new_duration_minutes': u.new_duration_minutes, 'note': u.note,
+                'user': u.user.name if u.user else None,
+                'created_at': as_utc(u.created_at).isoformat() if u.created_at else None} for u in item.updates]
+        return data
+
+    def parse_incident_datetime(raw, field_name):
+        if raw in (None, ''):
+            return None
+        try:
+            value = datetime.fromisoformat(str(raw).replace('Z', '+00:00'))
+        except ValueError:
+            raise ValueError(f'{field_name} must be a valid ISO date/time.')
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value
+
+    def incident_input(data, existing=None):
+        title = str(data.get('title', existing.title if existing else '')).strip()
+        description = str(data.get('description', existing.description if existing else '')).strip()
+        incident_type = str(data.get('incident_type', existing.incident_type if existing else 'Other')).strip()
+        severity = str(data.get('severity', existing.severity if existing else 'Medium')).strip()
+        location = str(data.get('location', existing.location if existing else '')).strip()
+        status = str(data.get('status', existing.status if existing else 'Reported')).strip()
+        if not title or len(title) > 160: raise ValueError('Title is required and must be 160 characters or fewer.')
+        if not description or len(description) > 10000: raise ValueError('Description is required and must be 10000 characters or fewer.')
+        if incident_type not in INCIDENT_TYPES: raise ValueError('Choose a valid incident type.')
+        if severity not in INCIDENT_SEVERITIES: raise ValueError('Choose a valid severity.')
+        if status not in INCIDENT_STATUSES: raise ValueError('Choose a valid status.')
+        if len(location) > 160: raise ValueError('Location must be 160 characters or fewer.')
+        def optional_id(key, current):
+            raw = data.get(key, current)
+            if raw in (None, ''): return None
+            try: val = int(raw)
+            except (ValueError, TypeError): raise ValueError(f'{key} must be a valid record ID.')
+            if val < 1: raise ValueError(f'{key} must be a positive record ID.')
+            return val
+        resource_id = optional_id('resource_id', existing.resource_id if existing else None)
+        activity_id = optional_id('activity_id', existing.activity_id if existing else None)
+        if resource_id and not db.session.get(CampusResource, resource_id): raise ValueError('Selected resource does not exist.')
+        if activity_id and not db.session.get(CampusActivity, activity_id): raise ValueError('Selected activity does not exist.')
+        duration_raw = data.get('estimated_duration_minutes', existing.estimated_duration_minutes if existing else None)
+        if duration_raw in (None, ''): duration = None
+        else:
+            try: duration = int(duration_raw)
+            except (ValueError, TypeError): raise ValueError('Estimated duration must be whole minutes.')
+            if duration < 1 or duration > 525600: raise ValueError('Estimated duration must be between 1 minute and 365 days.')
+        started = parse_incident_datetime(data.get('started_at', None), 'Incident start time') if 'started_at' in data else (existing.started_at if existing else None)
+        if started and started > datetime.now(timezone.utc) + timedelta(minutes=5): raise ValueError('Incident start time cannot be in the future.')
+        return dict(title=title, description=description, incident_type=incident_type, severity=severity,
+                    status=status, location=location, resource_id=resource_id, activity_id=activity_id,
+                    estimated_duration_minutes=duration, started_at=started)
+
+    @app.get('/incidents')
+    @login_required
+    def incidents_page():
+        query = CampusIncident.query
+        status_filter = request.args.get('status', '').strip()
+        severity_filter = request.args.get('severity', '').strip()
+        search_term = request.args.get('q', '').strip()[:100]
+        if status_filter in INCIDENT_STATUSES: query = query.filter_by(status=status_filter)
+        if severity_filter in INCIDENT_SEVERITIES: query = query.filter_by(severity=severity_filter)
+        if search_term:
+            query = query.filter(or_(CampusIncident.title.ilike(f'%{search_term}%'), CampusIncident.incident_code.ilike(f'%{search_term}%'), CampusIncident.location.ilike(f'%{search_term}%')))
+        incidents = query.order_by(CampusIncident.reported_at.desc()).limit(200).all()
+        return render_template('incidents.html', incidents=incidents, can_manage=current_user.role in ('coordinator','admin'),
+            status_filter=status_filter, severity_filter=severity_filter, q=search_term,
+            statuses=INCIDENT_STATUSES, severities=INCIDENT_SEVERITIES, types=INCIDENT_TYPES,
+            resources=CampusResource.query.order_by(CampusResource.name).all(), activities=CampusActivity.query.order_by(CampusActivity.name).all())
+
+    @app.post('/incidents')
+    @login_required
+    def create_incident():
+        require_roles('coordinator', 'admin')
+        data = request.form.to_dict()
+        try: fields = incident_input(data)
+        except ValueError as exc:
+            flash(str(exc), 'error'); return redirect(url_for('incidents_page'))
+        code = (data.get('incident_code') or '').strip().upper() or f'INC-{datetime.now(timezone.utc):%y%m%d}-{secrets.token_hex(3).upper()}'
+        if len(code) > 24 or not re.fullmatch(r'[A-Z0-9][A-Z0-9_-]{2,23}', code):
+            flash('Incident code must be 3–24 letters, numbers, hyphens or underscores.', 'error'); return redirect(url_for('incidents_page'))
+        item = CampusIncident(incident_code=code, reported_by_id=current_user.id, reported_at=utcnow(), **fields)
+        if item.status in ('Resolved', 'False alarm'): item.resolved_at = utcnow()
+        db.session.add(item); db.session.flush()
+        db.session.add(IncidentUpdate(incident_id=item.id, user_id=current_user.id, update_type='Created', new_status=item.status, new_duration_minutes=item.estimated_duration_minutes, note='Incident reported'))
+        record_audit('campus_incident_created', 'CampusIncident', item.id, f'{code}: {item.severity} {item.incident_type}')
+        db.session.commit()
+        flash(f'Incident {code} reported.', 'success')
+        return redirect(url_for('incident_detail', incident_id=item.id))
+
+    @app.get('/incidents/<int:incident_id>')
+    @login_required
+    def incident_detail(incident_id):
+        item = db.session.get(CampusIncident, incident_id)
+        if not item: abort(404)
+        return render_template('incident_detail.html', incident=item, can_manage=current_user.role in ('coordinator','admin'), statuses=INCIDENT_STATUSES)
+
+    @app.post('/incidents/<int:incident_id>/update')
+    @login_required
+    def update_incident(incident_id):
+        require_roles('coordinator', 'admin')
+        item = db.session.get(CampusIncident, incident_id)
+        if not item: abort(404)
+        data = request.form.to_dict()
+        try: fields = incident_input(data, item)
+        except ValueError as exc:
+            flash(str(exc), 'error'); return redirect(url_for('incident_detail', incident_id=item.id))
+        note = str(data.get('note', '')).strip()
+        if len(note) > 2000:
+            flash('Update note must be 2000 characters or fewer.', 'error'); return redirect(url_for('incident_detail', incident_id=item.id))
+        old_status, old_duration = item.status, item.estimated_duration_minutes
+        item.title = fields['title']; item.description = fields['description']; item.incident_type = fields['incident_type']
+        item.severity = fields['severity']; item.status = fields['status']; item.location = fields['location']
+        item.resource_id = fields['resource_id']; item.activity_id = fields['activity_id']
+        item.estimated_duration_minutes = fields['estimated_duration_minutes']; item.started_at = fields['started_at']
+        item.resolved_at = utcnow() if item.status in ('Resolved', 'False alarm') else None
+        item.last_updated_at = utcnow()
+        update_type = 'Status' if old_status != item.status else ('ETA' if old_duration != item.estimated_duration_minutes else 'Update')
+        db.session.add(IncidentUpdate(incident_id=item.id, user_id=current_user.id, update_type=update_type,
+            previous_status=old_status, new_status=item.status, previous_duration_minutes=old_duration,
+            new_duration_minutes=item.estimated_duration_minutes, note=note))
+        record_audit('campus_incident_updated', 'CampusIncident', item.id, f'{item.incident_code}: {old_status} -> {item.status}')
+        db.session.commit(); flash('Incident updated and history recorded.', 'success')
+        return redirect(url_for('incident_detail', incident_id=item.id))
+
+    @app.get('/api/incidents')
+    @login_required
+    def api_incidents():
+        query = CampusIncident.query
+        status_filter = request.args.get('status', '').strip()
+        severity_filter = request.args.get('severity', '').strip()
+        if status_filter in INCIDENT_STATUSES: query = query.filter_by(status=status_filter)
+        if severity_filter in INCIDENT_SEVERITIES: query = query.filter_by(severity=severity_filter)
+        return {'items': [incident_payload(i) for i in query.order_by(CampusIncident.reported_at.desc()).limit(200).all()]}, 200
+
+    @app.post('/api/incidents')
+    @login_required
+    def api_create_incident():
+        require_roles('coordinator', 'admin')
+        data = request.get_json(silent=True) or {}
+        try: fields = incident_input(data)
+        except ValueError as exc: return {'error': str(exc)}, 400
+        code = str(data.get('incident_code') or '').strip().upper() or f'INC-{datetime.now(timezone.utc):%y%m%d}-{secrets.token_hex(3).upper()}'
+        if len(code) > 24 or not re.fullmatch(r'[A-Z0-9][A-Z0-9_-]{2,23}', code): return {'error':'Incident code must be 3–24 letters, numbers, hyphens or underscores.'}, 400
+        item = CampusIncident(incident_code=code, reported_by_id=current_user.id, reported_at=utcnow(), **fields)
+        if item.status in ('Resolved','False alarm'): item.resolved_at = utcnow()
+        db.session.add(item); db.session.flush()
+        db.session.add(IncidentUpdate(incident_id=item.id, user_id=current_user.id, update_type='Created', new_status=item.status, new_duration_minutes=item.estimated_duration_minutes, note='Incident reported via API'))
+        record_audit('campus_incident_created', 'CampusIncident', item.id, f'{code}: {item.severity} {item.incident_type}')
+        db.session.commit(); return incident_payload(item, True), 201
+
+    @app.get('/api/incidents/<int:incident_id>')
+    @login_required
+    def api_incident_detail(incident_id):
+        item = db.session.get(CampusIncident, incident_id)
+        if not item: return {'error':'Incident not found.'}, 404
+        return incident_payload(item, True), 200
+
+    @app.patch('/api/incidents/<int:incident_id>')
+    @login_required
+    def api_update_incident(incident_id):
+        require_roles('coordinator', 'admin')
+        item = db.session.get(CampusIncident, incident_id)
+        if not item: return {'error':'Incident not found.'}, 404
+        data = request.get_json(silent=True) or {}
+        try: fields = incident_input(data, item)
+        except ValueError as exc: return {'error':str(exc)}, 400
+        note = str(data.get('note', '')).strip()
+        if len(note) > 2000: return {'error':'Update note must be 2000 characters or fewer.'}, 400
+        old_status, old_duration = item.status, item.estimated_duration_minutes
+        for key, value in fields.items(): setattr(item, key, value)
+        item.resolved_at = utcnow() if item.status in ('Resolved','False alarm') else None
+        item.last_updated_at = utcnow()
+        kind = 'Status' if old_status != item.status else ('ETA' if old_duration != item.estimated_duration_minutes else 'Update')
+        db.session.add(IncidentUpdate(incident_id=item.id, user_id=current_user.id, update_type=kind,
+            previous_status=old_status, new_status=item.status, previous_duration_minutes=old_duration,
+            new_duration_minutes=item.estimated_duration_minutes, note=note))
+        record_audit('campus_incident_updated', 'CampusIncident', item.id, f'{item.incident_code}: {old_status} -> {item.status}')
+        db.session.commit(); return incident_payload(item, True), 200
 
     @app.get('/campus-model')
     @login_required

@@ -459,3 +459,7 @@ Apply the Phase 9 schema with `flask --app wsgi:app db upgrade`. Run `python -m 
 Authenticated users can open **Activity priority** in the top navigation or visit `/activity-priority` to upload the campus `activities.csv` format. The CSV must contain `activity_id`, `activity_name`, `priority`, and `priority_weight`; all other activity columns are accepted and preserved in the saved upload. Files must be UTF-8 CSV, at most 1 MB and 2,000 rows, with unique activity IDs and `priority` values of `critical`, `high`, `medium`, or `low`.
 
 Each activity receives a transparent 0–100 relative score: 60% comes from the declared priority tier (critical 100, high 75, medium 50, low 25), and 40% from `priority_weight` normalized against the maximum weight in that upload. Scores of 70–100 display **High**, 40–69 **Medium**, and below 40 **Low**. The most recent valid source CSV is atomically stored at `instance/activity_priority_latest.csv`; invalid uploads do not replace it. This is a relative prioritization aid, not a probability of harm or an automated operational decision.
+
+### Activity priority CSV scoring
+
+Authenticated users can open **Activity priority**, upload the campus `activities.csv` schema, view a 0–100 score and High/Medium/Low classification for every activity, and download a scored CSV. Required columns and the scoring formula are documented in `docs/ACTIVITY_PRIORITY_CSV.md`; a copy of the supplied example is in `data/samples/activities_priority_example.csv`.

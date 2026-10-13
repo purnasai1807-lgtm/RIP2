@@ -20,7 +20,7 @@
   <div class="panel"><span class="muted">Medium priority</span><h2>{{ summary.medium }}</h2></div>
   <div class="panel"><span class="muted">Low priority</span><h2>{{ summary.low }}</h2></div>
 </section>
-<section class="panel"><h2>Scored activities</h2><p class="muted">Score blends the declared priority (60%) with the row's priority_weight normalized against the highest weight in this upload (40%). High ≥ 70, Medium ≥ 40, Low &lt; 40. This is a relative decision-support score, not a prediction of real-world risk.</p>
+<section class="panel"><h2>Scored activities</h2><p><a class="button primary" href="{{ url_for('download_activity_priority_csv') }}">Download scored CSV</a></p><p class="muted">Score blends the declared priority (60%) with the row's priority_weight normalized against the highest weight in this upload (40%). High ≥ 70, Medium ≥ 40, Low &lt; 40. This is a relative decision-support score, not a prediction of real-world risk.</p>
 <div style="overflow-x:auto"><table><thead><tr><th>ID</th><th>Activity</th><th>Input priority</th><th>Weight</th><th>Score / 100</th><th>Classification</th></tr></thead><tbody>
 {% for row in rows %}<tr><td>{{ row.activity_id }}</td><td>{{ row.activity_name }}</td><td>{{ row.priority }}</td><td>{{ row.priority_weight }}</td><td><strong>{{ row.score }}</strong></td><td><span class="priority-badge priority-{{ row.level|lower }}">{{ row.level }}</span></td></tr>{% endfor %}
 </tbody></table></div></section>

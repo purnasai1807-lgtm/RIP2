@@ -317,6 +317,8 @@ def register_routes(app):
                                 errors.append('The CSV contains a header but no activity rows.')
                             elif len(raw_rows) > 2000:
                                 errors.append('CSV must contain no more than 2,000 activity rows.')
+                            elif any(None in row or any(value is None for value in row.values()) for row in raw_rows):
+                                errors.append('CSV rows do not match the header: check for extra or missing columns and unmatched quotes.')
                             else:
                                 validated = []
                                 seen_ids = set()
@@ -360,12 +362,45 @@ def register_routes(app):
                                     finally:
                                         if os.path.exists(tmp):
                                             os.unlink(tmp)
+                                    # Publish a scored CSV for spreadsheet reuse.
+                                    scored_target = Path(app.instance_path) / 'activity_priority_scored.csv'
+                                    scored_fd, scored_tmp = tempfile.mkstemp(prefix='.activity-priority-scored-', suffix='.csv.tmp', dir=str(scored_target.parent))
+                                    try:
+                                        output = io.StringIO(newline='')
+                                        fieldnames = list(headers) + ['priority_score', 'priority_classification']
+                                        writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction='ignore', lineterminator='\r\n')
+                                        writer.writeheader()
+                                        for scored_row in scored_rows:
+                                            export_row = dict(scored_row)
+                                            export_row['priority_score'] = scored_row['score']
+                                            export_row['priority_classification'] = scored_row['level']
+                                            writer.writerow(export_row)
+                                        with os.fdopen(scored_fd, 'w', encoding='utf-8', newline='') as handle:
+                                            handle.write(output.getvalue()); handle.flush(); os.fsync(handle.fileno())
+                                        os.replace(scored_tmp, scored_target)
+                                    finally:
+                                        if os.path.exists(scored_tmp):
+                                            os.unlink(scored_tmp)
                     except (UnicodeDecodeError, csv.Error) as exc:
                         errors.append('Could not parse this CSV. Save it as UTF-8 CSV and check quoting and row formatting.')
                     except OSError:
                         app.logger.exception('Could not save activity priority CSV')
                         errors.append('The CSV was scored but could not be saved due to a file permission or storage error. Please retry.')
         return render_template('activity_priority.html', rows=scored_rows, summary=summary, errors=errors)
+
+    @app.get('/activity-priority/download')
+    @login_required
+    def download_activity_priority_csv():
+        # Download the latest scored activity CSV, including score and class columns.
+        target = Path(app.instance_path) / 'activity_priority_scored.csv'
+        if not target.is_file():
+            flash('Upload and score an activities CSV before downloading results.', 'warning')
+            return redirect(url_for('activity_priority'))
+        response = make_response(target.read_bytes())
+        response.headers['Content-Type'] = 'text/csv; charset=utf-8'
+        response.headers['Content-Disposition'] = 'attachment; filename="activities_scored.csv"'
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        return response
 
     @app.get('/dataset-analysis')
     @login_required

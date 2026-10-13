@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block title %}Ripple analysis — {{ incident.incident_code }} — CampusRipple{% endblock %}
+{% block content %}
+<div class="page-heading"><div><span class="eyebrow">PHASE 4 · MULTI-LEVEL CONSEQUENCE ANALYSIS</span><h1>Ripple trace: {{ incident.incident_code }}</h1><p class="muted">{{ incident.title }} · {{ incident.severity }} severity · {{ incident.status }}</p></div><div><a class="button secondary" href="{{ url_for('incident_detail', incident_id=incident.id) }}">← Incident detail</a></div></div>
+<div class="stats"><div class="stat-card"><span>Potentially affected records</span><strong>{{ report.impact_count }}</strong><small>Deduplicated resources, activities and constraints</small></div><div class="stat-card"><span>Traversal depth</span><strong>{{ report.max_depth }}</strong><small>Maximum dependency levels requested</small></div><div class="stat-card"><span>Analysis type</span><strong>Multi-hop</strong><small>Explicit dependency graph only</small></div></div>
+<section class="panel"><div class="row-between"><div><h2>Consequences by dependency level</h2><p class="muted">Level 0 is the linked starting record; later levels are dependent records. Severity is a transparent prioritization heuristic, not a probability.</p></div><a href="{{ url_for('api_incident_ripple_analysis', incident_id=incident.id, depth=report.max_depth) }}">View JSON</a></div>
+{% if report.impacts %}
+{% for item in report.impacts %}
+<article class="record-row"><div class="row-between"><div><span class="eyebrow">LEVEL {{ item.level }} · {{ item.kind|upper }} · {{ item.code }}</span><h3>{{ item.name }}</h3></div><span class="status {{ 'high' if item.severity in ['High','Critical'] else 'draft' }}">{{ item.severity }}</span></div>
+<p><strong>Location:</strong> {{ item.location }} · <strong>Parent:</strong> {{ item.parent }}</p><p>{{ item.relationship }}</p><p><strong>Source:</strong> <code>{{ item.source }}</code></p><p><strong>Suggested response:</strong> {{ item.mitigation }}</p><small class="muted">{{ item.evidence_status }}</small>
+{% if item.alternate_paths %}<details><summary>Other dependency paths ({{ item.alternate_paths|length }})</summary><ul>{% for path in item.alternate_paths %}<li>{{ path }}</li>{% endfor %}</ul></details>{% endif %}</article>
+{% endfor %}
+{% else %}<p>No ripple records were found from the linked incident resource/activity. This can mean missing starting links or incomplete dependency records; it does not prove there is no impact.</p>{% endif %}
+</section>
+<section class="panel" style="margin-top:18px"><h2>Limitations and review checklist</h2><ul>{% for limitation in report.limitations %}<li>{{ limitation }}</li>{% endfor %}</ul><p><strong>Method:</strong> {{ report.method }}</p><p class="muted">Analyzed at {{ report.analyzed_at }}</p><p>Before acting, confirm service state, activity owners, hard constraints, and the proposed mitigation with authorized campus staff. No status was automatically changed.</p><p><a href="{{ url_for('incident_direct_impacts', incident_id=incident.id) }}">Open Phase 3 direct-impact analysis</a></p></section>
+{% endblock %}

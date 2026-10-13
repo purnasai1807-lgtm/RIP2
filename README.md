@@ -426,3 +426,8 @@ Open an incident and select **Analyze direct impacts** to see the directly linke
 The supplied synthetic dataset is bundled exactly under `data/ripple_dataset/` and includes 19 CSV tables plus `incident.json` and the student glossary/rules. Sign in and open **Ripple dataset** in the navigation to see the complete table inventory, integrity validation, V1/V2/V3 service and activity impact analysis, constraints, staffing summary, repair requests, and parts availability checks. The same report is available at `/api/dataset-analysis?variant=V1` as authenticated JSON; `/dataset-download.zip` downloads the bundled source dataset. This is a read-only dataset integration and does not write synthetic rows into the operational college database.
 
 See `DATASET_INTEGRATION_REPORT.md` for counts, results, and limitations. Impact flags are not a certified revised timetable or repair schedule; all hard constraints and human safety approvals must be checked before action.
+
+
+## Phase 4 — multi-level ripple analysis
+
+Open an incident and choose **Run ripple analysis** to trace potential consequences across multiple dependency levels. The analysis follows explicit resource/activity links, shows each causal path and source record, consolidates duplicates, prioritizes review, and suggests verification steps. It never automatically cancels an activity or changes campus status. See [`docs/PHASE4_RIPPLE_ANALYSIS.md`](docs/PHASE4_RIPPLE_ANALYSIS.md).

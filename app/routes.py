@@ -20,6 +20,7 @@ from . import db
 from .models import User, Scenario, Impact, Department, Course, Room, TimetableEntry, AuditEvent, ExamSchedule, CampusEvent, AcademicCalendarItem, MaintenanceRequest, AttendanceSession, AttendanceRecord, InventoryItem, Announcement, ServiceRequest, FacultySubstitution, InvigilatorAssignment, InAppNotification, LoginAttempt, IntegrationSyncRun, ImpactFeedback, CampusActivity, CampusResource, ActivityDependency, ResourceConstraint, CampusIncident, IncidentUpdate
 from .engine import analyze, RULE_VERSION
 from .direct_impact import analyze_direct_impacts
+from .ripple_impact import analyze_ripple_impacts
 
 DOMAINS = ['Timetable & classrooms', 'Exams & academics', 'Campus facilities', 'College events & clubs', 'Transport & attendance', 'Budget & procurement', 'General college decision']
 VARIABLES = ['Date', 'Time', 'Resource', 'Capacity', 'Budget', 'Staffing', 'Delivery time', 'Release date']
@@ -454,6 +455,35 @@ def register_routes(app):
         dependencies = ActivityDependency.query.order_by(ActivityDependency.id).limit(5000).all()
         constraints = ResourceConstraint.query.order_by(ResourceConstraint.id).limit(5000).all()
         return analyze_direct_impacts(item, dependencies, constraints), 200
+
+    @app.get('/incidents/<int:incident_id>/ripple-analysis')
+    @login_required
+    def incident_ripple_analysis(incident_id):
+        item = db.session.get(CampusIncident, incident_id)
+        if not item:
+            abort(404)
+        dependencies = ActivityDependency.query.order_by(ActivityDependency.id).limit(5000).all()
+        constraints = ResourceConstraint.query.order_by(ResourceConstraint.id).limit(5000).all()
+        try:
+            max_depth = int(request.args.get('depth', '5'))
+        except (TypeError, ValueError):
+            max_depth = 5
+        report = analyze_ripple_impacts(item, dependencies, constraints, max_depth=max_depth)
+        return render_template('ripple_analysis.html', incident=item, report=report)
+
+    @app.get('/api/incidents/<int:incident_id>/ripple-analysis')
+    @login_required
+    def api_incident_ripple_analysis(incident_id):
+        item = db.session.get(CampusIncident, incident_id)
+        if not item:
+            return {'error': 'Incident not found.'}, 404
+        dependencies = ActivityDependency.query.order_by(ActivityDependency.id).limit(5000).all()
+        constraints = ResourceConstraint.query.order_by(ResourceConstraint.id).limit(5000).all()
+        try:
+            max_depth = int(request.args.get('depth', '5'))
+        except (TypeError, ValueError):
+            max_depth = 5
+        return analyze_ripple_impacts(item, dependencies, constraints, max_depth=max_depth), 200
 
     @app.post('/incidents/<int:incident_id>/update')
     @login_required

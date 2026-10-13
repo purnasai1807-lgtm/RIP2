@@ -1,5 +1,12 @@
 # CampusRipple implementation and verification status
 
+## Phase 4 — multi-level ripple analysis (added)
+
+- Authenticated incident ripple report and JSON endpoint (`/incidents/<id>/ripple-analysis`, `/api/incidents/<id>/ripple-analysis`).
+- Bounded breadth-first traversal across explicit activity prerequisites; paths, source references, severity heuristic, suggested mitigations and limitations are included.
+- Incident detail links into Phase 4; see `docs/PHASE4_RIPPLE_ANALYSIS.md`.
+- A focused unit test covers a resource → activity → dependent activity chain and bounded depth.
+
 ## Implemented modules
 
 - Multi-level decision impact chain with direct effects (Level 1), downstream effects (Level 2), and third-level consequences (Level 3) from transparent college-specific rules.

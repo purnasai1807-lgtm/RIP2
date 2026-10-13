@@ -1,0 +1,16 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+instance/
+*.db
+*.sqlite
+*.sqlite3
+backups/
+results/
+locust-report.html
+.DS_Store

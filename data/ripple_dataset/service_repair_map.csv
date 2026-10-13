@@ -1,0 +1,12 @@
+request_id,target_service_id,restored_state,effective_after,requires_prerequisite_service,notes
+J01,PWR-CAB,available,work_end_plus_handover_plus_verification,false,Restore CAB power; independent local circuit
+J02,PWR-LAB,available,work_end_plus_handover_plus_verification,false,Restore LAB power; safety check required
+J03,PWR-AUD,available,work_end_plus_handover_plus_verification,false,Restore auditorium power; AV work depends on this
+J04,NET-CORE,available,work_end_plus_handover_plus_verification,false,Restore campus backbone; branch network work depends on this
+J05,NET-ABA,available,work_end_plus_handover_plus_verification,true,Restore Academic Block A network after core
+J06,NET-LIB,available,work_end_plus_handover_plus_verification,true,Restore Library network after core
+J07,NET-ADM,available,work_end_plus_handover_plus_verification,true,Restore Administration network after core
+J08,WAT-CAN,available,work_end_plus_handover_plus_verification,false,Restore canteen water; hygiene verification required
+J09,ACCESS-LAB,available,work_end_plus_handover_plus_verification,true,Restore controlled lab access after safe power
+J10,AV-AUD,available,work_end_plus_handover_plus_verification,true,Restore auditorium AV after power
+J12,NET-CAB,available,work_end_plus_handover_plus_verification,true,Restore CAB local network after core

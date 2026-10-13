@@ -1,0 +1,30 @@
+feature_id,description,mandatory_safety_feature
+accessible,Accessible,true
+assessment,Assessment,false
+auditorium,Auditorium,false
+av,Av,false
+collaboration,Collaboration,false
+computers,Computers,false
+conference,Conference,false
+controlled_access,Controlled Access,true
+counselling,Counselling,false
+exam_seating,Exam Seating,false
+food_service,Food Service,true
+lab_benches,Lab Benches,true
+lecture,Lecture,false
+meeting,Meeting,false
+network,Network,false
+power,Power,false
+private,Private,false
+projector,Projector,false
+quiet,Quiet,false
+records,Records,false
+review,Review,false
+seating,Seating,false
+serving,Serving,false
+showcase,Showcase,false
+specialist_lab,Specialist Lab,false
+stage,Stage,false
+study,Study,false
+training,Training,false
+workstations,Workstations,false

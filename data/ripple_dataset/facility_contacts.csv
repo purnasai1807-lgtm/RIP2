@@ -1,0 +1,10 @@
+contact_id,contact_name,role,primary_building_id,contact_window,notes
+FC01,CAB Site Coordinator,building_coordinator,CAB,09:00-16:30,Synthetic facility/site contact for the scenario
+FC02,ABA Site Coordinator,building_coordinator,ABA,09:00-16:30,Synthetic facility/site contact for the scenario
+FC03,ABB Site Coordinator,building_coordinator,ABB,09:00-16:30,Synthetic facility/site contact for the scenario
+FC04,ABC Site Coordinator,student_support_coordinator,ABC,09:00-16:30,Synthetic facility/site contact for the scenario
+FC05,Library Facility Incharge,library_incharge,LIB,09:00-16:30,Synthetic facility/site contact for the scenario
+FC06,Laboratory Safety Incharge,lab_safety_incharge,LAB,09:00-16:30,Synthetic facility/site contact for the scenario
+FC07,Auditorium Venue Incharge,venue_incharge,AUD,09:00-16:30,Synthetic facility/site contact for the scenario
+FC08,Canteen Food Safety Incharge,food_safety_incharge,CAN,09:00-16:30,Synthetic facility/site contact for the scenario
+FC09,Administration Venue Incharge,administration_incharge,ADM,09:00-16:30,Synthetic facility/site contact for the scenario

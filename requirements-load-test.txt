@@ -1,0 +1,2 @@
+# Optional staging-only load testing dependencies
+locust>=2.32,<3.0

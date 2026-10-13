@@ -1,0 +1,12 @@
+request_id,asset_id,target_service_ids,required_skill,work_units,prerequisite_request_id,earliest_start,latest_start,part_required,eligible_staff,preemptible,max_parallel_engineers,estimated_handover_minutes,verification_minutes,status,failure_mode,restores_state,work_notes
+J01,PWR-CAB,PWR-CAB,electrical,4,,10:00,15:00,FUSE,E01;E06;E10;E11;E16;E20;E21;E26;E30,false,1,5,10,open,service_repair,available,Restore CAB power; independent local circuit
+J02,PWR-LAB,PWR-LAB,electrical,1,,10:00,15:00,BREAKER,E01;E06;E10;E11;E16;E20;E21;E26;E30,false,1,5,10,open,service_repair,available,Restore LAB power; safety check required
+J03,PWR-AUD,PWR-AUD,electrical,4,,10:00,15:00,BREAKER,E01;E06;E10;E11;E16;E20;E21;E26;E30,false,1,5,10,open,service_repair,available,Restore auditorium power; AV work depends on this
+J04,NET-CORE,NET-CORE,network,1,,10:00,15:00,NETWORK_MODULE,E02;E06;E07;E12;E16;E17;E22;E26;E27,false,1,5,5,open,service_repair,available,Restore campus backbone; branch network work depends on this
+J05,NET-ABA,NET-ABA,network,1,J04,10:00,15:00,PATCH_CORD,E02;E06;E07;E12;E16;E17;E22;E26;E27,false,1,5,5,open,service_repair,available,Restore Academic Block A network after core
+J06,NET-LIB,NET-LIB,network,1,J04,10:00,15:00,PATCH_CORD,E02;E06;E07;E12;E16;E17;E22;E26;E27,false,1,5,5,open,service_repair,available,Restore Library network after core
+J07,NET-ADM,NET-ADM,network,1,J04,10:00,15:00,PATCH_CORD,E02;E06;E07;E12;E16;E17;E22;E26;E27,false,1,5,5,open,service_repair,available,Restore Administration network after core
+J08,WAT-CAN,WAT-CAN,water,3,,10:00,15:00,VALVE_KIT,E02;E03;E08;E12;E13;E18;E22;E23;E28,false,1,5,15,open,service_repair,available,Restore canteen water; hygiene verification required
+J09,ACCESS-LAB,ACCESS-LAB,access,2,J02,10:00,15:00,ACCESS_SENSOR,E04;E08;E09;E14;E18;E19;E24;E28;E29,false,1,5,10,open,service_repair,available,Restore controlled lab access after safe power
+J10,AV-AUD,AV-AUD,av,3,J03,10:00,15:00,AV_CONTROLLER,E04;E05;E10;E14;E15;E20;E24;E25;E30,false,1,5,10,open,service_repair,available,Restore auditorium AV after power
+J12,NET-CAB,NET-CAB,network,1,J04,10:00,15:00,PATCH_CORD,E02;E06;E07;E12;E16;E17;E22;E26;E27,false,1,5,5,open,service_repair,available,Restore CAB local network after core

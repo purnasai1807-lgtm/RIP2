@@ -1,0 +1,2 @@
+# Optional staging-only browser smoke test dependencies
+playwright>=1.50,<2.0

@@ -1,0 +1,44 @@
+assignment_id,activity_id,staff_id,assignment_role,required,assignment_type,notes
+SA001,A01,P01,faculty_exam,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA002,A02,P06,faculty_presenter,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA003,A03,P13,technical_facilitator,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA004,A04,P14,assessment_officer,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA005,A05,P07,faculty_reviewer,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA006,A05,P19,faculty_reviewer,true,baseline,Additional required support
+SA007,A06,P02,counsellor,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA008,A07,P26,technical_facilitator,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA009,A08,P04,event_support,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA010,A09,P20,faculty_presenter,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA011,A10,P08,food_service_lead,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA012,A11,P03,event_producer,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA013,A12,P09,lab_technician,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA014,A13,P11,records_officer,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA015,A14,P05,faculty_exam,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA016,A15,P32,faculty_reviewer,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA017,A16,P16,event_producer,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA018,A17,P22,lab_technician,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA019,A18,P27,assessment_officer,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA020,A19,P10,library_support,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA021,A20,P21,food_service_lead,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA022,A21,P29,event_producer,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA023,A22,P39,technical_facilitator,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA024,A23,P33,faculty_reviewer,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA025,A24,P42,event_producer,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA026,A25,P45,faculty_presenter,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA027,A26,P35,lab_technician,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA028,A27,P55,event_producer,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA029,A28,P24,records_officer,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA030,A29,P17,event_support,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA031,A30,P37,records_officer,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA032,A31,P12,student_support,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA033,A32,P15,counsellor,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA034,A33,P52,technical_facilitator,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA035,A34,P46,faculty_presenter,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA036,A35,P30,event_support,true,baseline,Baseline staffing; solver may reassign qualified available staff
+SA037,A35,P43,event_support,true,baseline,Additional required support
+SA038,A02,P57,technical_support,true,baseline,Required qualified technical support
+SA039,A04,P58,technical_support,true,baseline,Required qualified technical support
+SA040,A05,P59,technical_support,true,baseline,Required qualified technical support
+SA041,A09,P60,technical_support,true,baseline,Required qualified technical support
+SA042,A15,P61,technical_support,true,baseline,Required qualified technical support
+SA043,A25,P62,technical_support,true,baseline,Required qualified technical support

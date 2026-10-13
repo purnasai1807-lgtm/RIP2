@@ -1,0 +1,1 @@
+{% extends 'base.html' %}{% block title %}{{ code }} — Ripple{% endblock %}{% block content %}<div class="empty-state error-state"><div class="empty-orbit">{{ code }}</div><h1>We couldn't complete that request.</h1><p>{{ message }}</p><a class="button primary" href="{{ url_for('dashboard') if current_user.is_authenticated else url_for('index') }}">Go back</a></div>{% endblock %}

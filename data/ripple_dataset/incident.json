@@ -1,0 +1,46 @@
+{
+  "incident_id": "INC-01",
+  "scenario_name": "Campus Innovation Day compound infrastructure incident",
+  "incident_start": "10:00",
+  "simulation_start": "09:00",
+  "simulation_end": "16:30",
+  "time_step_minutes": 15,
+  "description": "Compound local power, network distribution, and canteen water failures begin at 10:00. No service is restored unless a mapped work request finishes and its verification passes.",
+  "affected_service_ids": [
+    "PWR-CAB",
+    "PWR-LAB",
+    "PWR-AUD",
+    "AV-AUD",
+    "ACCESS-LAB",
+    "NET-CORE",
+    "NET-ABA",
+    "NET-LIB",
+    "NET-ADM",
+    "WAT-CAN"
+  ],
+  "rules": {
+    "unknown_service_state": "unknown_not_usable_for_certified_plan",
+    "degraded_service": "not_usable_for normal operation unless explicit activity mode accepts it",
+    "restoration": "service becomes available at work completion plus verification; prerequisites must be satisfied",
+    "time_zone": "campus local time",
+    "time_format": "HH:MM",
+    "activity_time_granularity_minutes": 15
+  },
+  "scenario_variants": [
+    {
+      "variant_id": "V1",
+      "description": "Original incident; all listed faults occur at 10:00",
+      "enabled_by_default": true
+    },
+    {
+      "variant_id": "V2",
+      "description": "Network backbone outage only; all other services normal",
+      "enabled_by_default": false
+    },
+    {
+      "variant_id": "V3",
+      "description": "Power and canteen water faults only; network normal",
+      "enabled_by_default": false
+    }
+  ]
+}

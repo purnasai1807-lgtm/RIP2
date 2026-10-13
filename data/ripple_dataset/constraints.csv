@@ -1,0 +1,21 @@
+constraint_id,level,scope,rule,enforcement
+C01,hard,rooms,Room capacity must be >= participants,hard_constraint
+C02,hard,rooms,All required room features must be present,hard_constraint
+C03,hard,rooms,Activity must fit within room availability and closure windows including setup/teardown,hard_constraint
+C04,hard,rooms,No overlapping activity occupancy intervals in a room,hard_constraint
+C05,hard,services,Every required service must be available for the entire activity; degraded service is not enough unless approved activity mode explicitly tolerates it,hard_constraint
+C06,hard,activities,Start must be within earliest_start and latest_start and within max advance/delay relative to original start,hard_constraint
+C07,hard,activities,Scheduled duration must be between minimum_duration_minutes and duration_minutes; critical exams/events require full duration unless activity row says otherwise,hard_constraint
+C08,hard,dependencies,Hard dependencies require source end + minimum gap <= target start,hard_constraint
+C09,soft,dependencies,Soft dependencies add a penalty when source completion/continuity conditions are not met; they do not automatically block scheduling,objective_or_penalty
+C10,hard,staff,Required role count must be covered by qualified staff available for full activity; no staff overlap and breaks must be respected,hard_constraint
+C11,hard,facilities,Rooms requiring facilitator must have the required facility-qualified staff role assigned,hard_constraint
+C12,hard,engineering,"Engineer must have required or declared secondary skill, be available for whole nonpreemptible job and verification, and work one job at a time",hard_constraint
+C13,hard,engineering,Prerequisite jobs must finish including verification before dependent jobs start,hard_constraint
+C14,hard,inventory,A required part must be in stock at job start; inventory is consumed once per job,hard_constraint
+C15,hard,services,Only completed mapped work requests change service state; downstream service links remain blocked until dependencies are healthy,hard_constraint
+C16,soft,objective,"Minimize cancellations first, then priority-weighted delay, then relocations, then soft dependency violations, then engineering completion time",objective_or_penalty
+C17,hard,safety,Laboratory activities require lab_technician and controlled_access; food-service activities require food_service_lead and approved food venue,hard_constraint
+C18,hard,data,Missing service/availability/qualification data is unknown and cannot be treated as available,hard_constraint
+C19,hard,activities,Cancellation or deferral is permitted only where activity flags allow it; cancellations incur the declared penalty,hard_constraint
+C20,soft,objective,Prefer original room and original start when all higher-priority objectives are equal,objective_or_penalty

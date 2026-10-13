@@ -1,0 +1,39 @@
+service_id,service_type,location_id,initial_state,state_from,capacity_percent,safety_critical,restoration_rule,incident_note
+PWR-CAB,power,CAB,unavailable,10:00,0,true,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Incident: local power failure
+NET-CAB,network,CAB,degraded,10:00,45,false,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Incident: network distribution fault
+WAT-CAB,water,CAB,available,09:00,100,true,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+AV-CAB,av,CAB,available,09:00,100,false,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+PWR-ABA,power,ABA,available,09:00,100,true,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+NET-ABA,network,ABA,unavailable,10:00,0,false,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Incident: network distribution fault
+WAT-ABA,water,ABA,available,09:00,100,true,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+AV-ABA,av,ABA,available,09:00,100,false,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+PWR-ABB,power,ABB,available,09:00,100,true,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+NET-ABB,network,ABB,available,09:00,100,false,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+WAT-ABB,water,ABB,available,09:00,100,true,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+AV-ABB,av,ABB,available,09:00,100,false,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+PWR-ABC,power,ABC,available,09:00,100,true,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+NET-ABC,network,ABC,available,09:00,100,false,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+WAT-ABC,water,ABC,available,09:00,100,true,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+AV-ABC,av,ABC,available,09:00,100,false,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+PWR-LIB,power,LIB,available,09:00,100,true,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+NET-LIB,network,LIB,unavailable,10:00,0,false,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Incident: network distribution fault
+WAT-LIB,water,LIB,available,09:00,100,true,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+AV-LIB,av,LIB,available,09:00,100,false,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+PWR-LAB,power,LAB,unavailable,10:00,0,true,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Incident: local power failure
+NET-LAB,network,LAB,available,09:00,100,false,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+WAT-LAB,water,LAB,available,09:00,100,true,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+AV-LAB,av,LAB,available,09:00,100,false,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+PWR-AUD,power,AUD,unavailable,10:00,0,true,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Incident: local power failure
+NET-AUD,network,AUD,available,09:00,100,false,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+WAT-AUD,water,AUD,available,09:00,100,true,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+AV-AUD,av,AUD,unavailable,10:00,0,false,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Incident: auditorium AV controller failure
+PWR-CAN,power,CAN,available,09:00,100,true,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+NET-CAN,network,CAN,available,09:00,100,false,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+WAT-CAN,water,CAN,unavailable,10:00,0,true,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Incident: canteen water supply fault
+AV-CAN,av,CAN,available,09:00,100,false,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+PWR-ADM,power,ADM,available,09:00,100,true,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+NET-ADM,network,ADM,unavailable,10:00,0,false,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Incident: network distribution fault
+WAT-ADM,water,ADM,available,09:00,100,true,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+AV-ADM,av,ADM,available,09:00,100,false,Only a completed mapped work request restores this service; upstream dependencies must also be operational,Normal at incident declaration
+ACCESS-LAB,access,LAB,unavailable,10:00,0,true,J09 restores lab access after J02 power is safe,Incident: controlled lab access is restricted pending controller restoration
+NET-CORE,network_backbone,campus,degraded,10:00,45,false,J04 restores core; branch network services remain unavailable until their own jobs complete,Incident: campus network backbone degraded

@@ -1,0 +1,176 @@
+name: CampusRipple acceptance pipeline
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r requirements.txt
+      - run: python -m compileall -q app migrations tests scripts
+      - run: python scripts/validate_migration_graph.py
+      - run: python scripts/preflight.py
+      - run: pytest -q
+      - name: Verify impact evaluation tooling without fabricating institutional records
+        run: python -m pytest -q tests/test_impact_evaluation.py tests/test_evidence.py
+
+  postgres-and-restore:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: campusripple_test
+          POSTGRES_USER: campusripple
+          POSTGRES_PASSWORD: test-only-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U campusripple -d campusripple_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql+psycopg://campusripple:test-only-password@localhost:5432/campusripple_test
+      SECRET_KEY: ci-only-secret-key-at-least-thirty-two-characters-long
+      APP_ENV: development
+      SKIP_AUTO_SCHEMA: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r requirements.txt
+      - run: flask --app wsgi:app db upgrade
+      - run: python scripts/verify_postgres_guards.py
+      - run: python scripts/verify_postgres_concurrency.py
+      - name: Backup and restore to separate disposable database
+        env:
+          RESTORE_DATABASE_URL: postgresql://campusripple:test-only-password@localhost:5432/campusripple_restore
+          RESTORE_CONFIRM_DISPOSABLE: 'true'
+          SOURCE_DATABASE_URL: postgresql+psycopg://campusripple:test-only-password@localhost:5432/campusripple_test
+        run: |
+          psql 'postgresql://campusripple:test-only-password@localhost:5432/campusripple_test' -v ON_ERROR_STOP=1 -c 'CREATE DATABASE campusripple_restore'
+          bash scripts/backup_postgres.sh
+          BACKUP_FILE="$(find backups -maxdepth 1 -name '*.dump' -print -quit)"
+          test -n "$BACKUP_FILE"
+          echo "BACKUP_FILE=$BACKUP_FILE" >> "$GITHUB_ENV"
+          echo "RESTORE_DATABASE_URL=$RESTORE_DATABASE_URL" >> "$GITHUB_ENV"
+          echo "RESTORE_CONFIRM_DISPOSABLE=$RESTORE_CONFIRM_DISPOSABLE" >> "$GITHUB_ENV"
+          echo "SOURCE_DATABASE_URL=$SOURCE_DATABASE_URL" >> "$GITHUB_ENV"
+      - name: Verify restored schema
+        run: bash scripts/verify_backup_restore.sh
+
+  browser-smtp-load:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: campusripple_browser
+          POSTGRES_USER: campusripple
+          POSTGRES_PASSWORD: browser-test-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U campusripple -d campusripple_browser"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      mailpit:
+        image: axllent/mailpit:latest
+        ports: ['1025:1025', '8025:8025']
+    env:
+      DATABASE_URL: postgresql+psycopg://campusripple:browser-test-password@localhost:5432/campusripple_browser
+      SECRET_KEY: ci-browser-only-secret-key-at-least-thirty-two-characters
+      APP_ENV: development
+      SKIP_AUTO_SCHEMA: 'true'
+      REQUIRE_EMAIL_VERIFICATION: 'false'
+      MAIL_SERVER: localhost
+      MAIL_PORT: '1025'
+      MAIL_USE_TLS: 'false'
+      MAIL_USE_SSL: 'false'
+      MAIL_DEFAULT_SENDER: 'CampusRipple CI <ci@aceec.ac.in>'
+      PUBLIC_BASE_URL: http://127.0.0.1:8000
+      BROWSER_BASE_URL: http://127.0.0.1:8000
+      BROWSER_ALLOW_HTTP: 'true'
+      BROWSER_TEST_REGISTER: 'true'
+      BROWSER_TEST_EMAIL: ripple-ci-browser@aceec.ac.in
+      BROWSER_TEST_PASSWORD: ci-browser-test-password-2026
+      SMTP_ALLOW_NO_AUTH: 'true'
+      SMTP_TEST_RECIPIENT: ripple-ci-mailbox@aceec.ac.in
+      LOAD_TEST_HOST: http://127.0.0.1:8000
+      LOAD_TEST_EMAIL: ripple-ci-browser@aceec.ac.in
+      LOAD_TEST_PASSWORD: ci-browser-test-password-2026
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: pip install -r requirements.txt -r requirements-browser-test.txt -r requirements-load-test.txt
+      - run: python -m playwright install --with-deps chromium
+      - run: flask --app wsgi:app db upgrade
+      - name: Start application
+        run: |
+          nohup gunicorn wsgi:app --bind 127.0.0.1:8000 --workers 2 --timeout 60 > /tmp/campusripple.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8000/healthz >/dev/null; then exit 0; fi
+            sleep 2
+          done
+          cat /tmp/campusripple.log
+          exit 1
+      - name: Deployment health and security-header smoke test
+        env:
+          CAMPUSRIPPLE_BASE_URL: http://127.0.0.1:8000
+        run: python scripts/smoke_test_deployment.py
+      - name: Authenticated browser and authorization acceptance
+        run: python tests/browser/authenticated_smoke.py
+      - name: Verify SMTP protocol delivery to local Mailpit sink
+        run: |
+          python scripts/verify_smtp.py
+          flask --app wsgi:app test-mail ripple-ci-app-mailbox@aceec.ac.in
+      - name: Confirm Mailpit received test message
+        run: |
+          python - <<'PY'
+          import json, time, urllib.request
+          for _ in range(20):
+              try:
+                  with urllib.request.urlopen('http://127.0.0.1:8025/api/v1/messages', timeout=3) as r:
+                      payload=json.load(r)
+                  if len(payload.get('messages', [])) >= 2:
+                      print('PASS: Mailpit accepted and stored both direct SMTP and application-generated test messages')
+                      break
+              except Exception:
+                  pass
+              time.sleep(1)
+          else:
+              raise SystemExit('FAIL: expected both direct SMTP and app-generated messages in Mailpit')
+          PY
+      - name: Measured CI load test (50 simulated users, 60 seconds)
+        run: |
+          locust -f tests/load/locustfile.py --headless -H "$LOAD_TEST_HOST" --users 50 --spawn-rate 5 --run-time 60s --csv /tmp/campusripple-load
+          python - <<'PY'
+          import csv, os
+          path='/tmp/campusripple-load_stats.csv'
+          if not os.path.exists(path): raise SystemExit('Locust statistics CSV was not created')
+          with open(path, newline='') as f: rows=list(csv.DictReader(f))
+          total=next((r for r in rows if r.get('Name')=='Aggregated'), None)
+          if not total: raise SystemExit('Aggregated load result missing')
+          requests=int(total.get('Request Count') or 0)
+          failures=int(total.get('Failure Count') or 0)
+          p95=float(total.get('95%') or 0)
+          print(f'MEASURED CI RESULT: requests={requests}, failures={failures}, p95_ms={p95}')
+          if requests < 1 or failures > max(5, requests // 20): raise SystemExit('Load test failed: request volume too low or failure rate above 5%')
+          PY
+      - name: Upload load test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: campusripple-load-test-results
+          path: /tmp/campusripple-load*
+          if-no-files-found: ignore

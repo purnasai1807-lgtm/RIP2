@@ -1,0 +1,10 @@
+source_service,target_service,relationship,required_state,description
+NET-CORE,NET-CAB,network_distribution_dependency,available,Branch network requires healthy campus backbone
+NET-CORE,NET-ABA,network_distribution_dependency,available,Branch network requires healthy campus backbone
+NET-CORE,NET-ABB,network_distribution_dependency,available,Branch network requires healthy campus backbone
+NET-CORE,NET-ABC,network_distribution_dependency,available,Branch network requires healthy campus backbone
+NET-CORE,NET-LIB,network_distribution_dependency,available,Branch network requires healthy campus backbone
+NET-CORE,NET-LAB,network_distribution_dependency,available,Branch network requires healthy campus backbone
+NET-CORE,NET-AUD,network_distribution_dependency,available,Branch network requires healthy campus backbone
+NET-CORE,NET-CAN,network_distribution_dependency,available,Branch network requires healthy campus backbone
+NET-CORE,NET-ADM,network_distribution_dependency,available,Branch network requires healthy campus backbone

@@ -1,0 +1,15 @@
+role_id,role_description,required_qualification_tag,can_substitute,notes
+assessment_officer,Assessment Officer,assessment_officer,false,Qualification tags must match staff_directory.qualifications
+counsellor,Counsellor,counsellor,false,Qualification tags must match staff_directory.qualifications
+event_producer,Event Producer,event_producer,false,Qualification tags must match staff_directory.qualifications
+event_support,Event Support,event_support,false,Qualification tags must match staff_directory.qualifications
+faculty_exam,Faculty Exam,faculty_exam,false,Qualification tags must match staff_directory.qualifications
+faculty_presenter,Faculty Presenter,faculty_presenter,true,Qualification tags must match staff_directory.qualifications
+faculty_reviewer,Faculty Reviewer,faculty_reviewer,true,Qualification tags must match staff_directory.qualifications
+food_service_lead,Food Service Lead,food_service_lead,false,Qualification tags must match staff_directory.qualifications
+lab_technician,Lab Technician,lab_technician,false,Qualification tags must match staff_directory.qualifications
+library_support,Library Support,library_support,false,Qualification tags must match staff_directory.qualifications
+records_officer,Records Officer,records_officer,false,Qualification tags must match staff_directory.qualifications
+student_support,Student Support,student_support,false,Qualification tags must match staff_directory.qualifications
+technical_facilitator,Technical Facilitator,technical_facilitator,false,Qualification tags must match staff_directory.qualifications
+technical_support,Technical Support,technical_support,false,Qualification tags must match staff_directory.qualifications

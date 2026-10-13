@@ -1,0 +1,68 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: impact_db
+      POSTGRES_USER: impact_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U impact_user -d impact_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  migrate:
+    build: .
+    profiles: ["migration"]
+    environment:
+      SECRET_KEY: ${SECRET_KEY:?Set a unique SECRET_KEY in .env}
+      APP_ENV: ${APP_ENV:-production}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      DATABASE_URL: postgresql+psycopg://impact_user:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/impact_db
+      MAIL_SERVER: ${MAIL_SERVER:-}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USE_TLS: ${MAIL_USE_TLS:-true}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_DEFAULT_SENDER: ${MAIL_DEFAULT_SENDER:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set PUBLIC_BASE_URL to the deployed HTTPS URL}
+      REQUIRE_EMAIL_VERIFICATION: ${REQUIRE_EMAIL_VERIFICATION:-true}
+      INSTITUTIONAL_EMAIL_DOMAINS: ${INSTITUTIONAL_EMAIL_DOMAINS:?Set the institution-approved email domain allowlist}
+    command: ["flask", "--app", "wsgi:app", "db", "upgrade"]
+    depends_on:
+      db:
+        condition: service_healthy
+  web:
+    build: .
+    restart: unless-stopped
+    environment:
+      SECRET_KEY: ${SECRET_KEY:?Set a unique SECRET_KEY in .env}
+      APP_ENV: ${APP_ENV:-production}
+      DATABASE_URL: postgresql+psycopg://impact_user:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/impact_db
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      MAIL_SERVER: ${MAIL_SERVER:-}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USE_TLS: ${MAIL_USE_TLS:-true}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_DEFAULT_SENDER: ${MAIL_DEFAULT_SENDER:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set PUBLIC_BASE_URL to the deployed HTTPS URL}
+      REQUIRE_EMAIL_VERIFICATION: ${REQUIRE_EMAIL_VERIFICATION:-true}
+      INSTITUTIONAL_EMAIL_DOMAINS: ${INSTITUTIONAL_EMAIL_DOMAINS:?Set the institution-approved email domain allowlist}
+      COLLEGE_DATA_API_URL: ${COLLEGE_DATA_API_URL:-}
+      COLLEGE_DATA_API_TOKEN: ${COLLEGE_DATA_API_TOKEN:-}
+      COLLEGE_DATA_API_TIMEOUT: ${COLLEGE_DATA_API_TIMEOUT:-15}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      db:
+        condition: service_healthy
+volumes:
+  postgres_data:

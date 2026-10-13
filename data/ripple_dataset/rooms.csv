@@ -1,0 +1,27 @@
+room_id,building_id,room_name,capacity,features,opening_time,closing_time,setup_buffer_minutes,teardown_buffer_minutes,accessibility,facility_incharge_id,requires_facilitator,closure_windows
+R01,CAB,Exam Hall 1,90,quiet;seating;exam_seating,09:00,16:30,5,5,step_free,,false,none
+R02,CAB,Lecture Room 2,70,projector;seating;lecture;meeting,09:00,16:30,5,5,standard,,false,none
+R03,ABA,Computing Studio 3,40,computers;network;collaboration,09:00,16:30,10,5,standard,,false,none
+R04,ABA,Assessment Lab 4,50,computers;network;quiet;assessment,09:00,16:30,5,5,standard,,false,none
+R05,ABB,Review Room 5,36,projector;seating;review;meeting,09:00,16:30,5,5,standard,,false,none
+R06,ABC,Counselling Room 6,24,private;counselling;seating,09:00,16:30,5,5,step_free,,false,none
+R07,ABB,Training Room 7,36,computers;training,09:00,16:30,5,5,standard,,false,none
+R08,ABC,Meeting Room 8,50,seating;meeting;projector;computers;network;quiet,09:00,16:30,5,5,step_free,,false,none
+R09,LIB,Library Lab 9,60,computers;quiet;study;network,09:00,16:30,5,5,step_free,FC05,false,none
+R10,CAN,Main Canteen,240,food_service;serving;seating,08:00,16:30,5,5,standard,FC08,true,none
+R11,AUD,Main Auditorium,260,auditorium;av;projector;stage;seating,09:00,16:30,5,5,standard,FC07,false,none
+R12,LAB,Electronics Lab,36,specialist_lab;lab_benches;controlled_access,09:00,16:30,10,5,standard,FC06,true,none
+R13,ADM,Records Office,16,workstations;network;records,09:00,16:30,5,5,step_free,,false,none
+R14,ABC,Accessible Seminar Room,32,quiet;seating;accessible,09:00,16:30,5,5,step_free,,false,none
+R15,ABB,Showcase Room,80,projector;seating;showcase,09:00,16:30,5,5,standard,,false,none
+R16,CAB,Exam Hall 2,100,quiet;seating;exam_seating;projector,09:00,16:30,5,5,step_free,,false,none
+R17,ABA,Backup Assessment Lab,48,computers;network;quiet;assessment;projector,09:00,16:30,5,5,standard,,false,none
+R18,ABB,Backup Training Studio,48,computers;network;quiet;training;projector;collaboration;review;showcase;meeting,09:00,16:30,10,5,standard,,false,none
+R19,ABC,Student Support Suite,48,private;counselling;seating;quiet;accessible,09:00,16:30,5,5,step_free,,false,none
+R20,LIB,Digital Library Room,70,computers;quiet;study;network;projector,09:00,16:30,5,5,step_free,FC05,false,none
+R21,LAB,Robotics Lab,32,specialist_lab;lab_benches;controlled_access;power,09:00,16:30,10,5,standard,FC06,true,none
+R22,ADM,Administration Conference Hall,260,auditorium;av;projector;stage;seating;conference;showcase;review;meeting;quiet;exam_seating,09:00,16:30,5,5,step_free,FC09,false,none
+R23,ABC,Backup Food Distribution Hall,220,food_service;serving;seating;accessible,09:00,16:30,5,5,step_free,FC08,true,none
+R24,ADM,Backup Records Suite,55,workstations;network;records;quiet;computers;assessment,09:00,16:30,5,5,step_free,,false,none
+R25,ABC,Multipurpose Academic Hall,130,projector;seating;quiet;exam_seating;computers;network;assessment;meeting;accessible;review;showcase,09:00,16:30,5,5,step_free,FC04,false,none
+R26,ADM,Backup Conference Auditorium,280,auditorium;av;projector;stage;seating;conference;showcase;review;meeting;quiet;exam_seating;accessible,09:30,16:30,5,5,step_free,FC09,false,none

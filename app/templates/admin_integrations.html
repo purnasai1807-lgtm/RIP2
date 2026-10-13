@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block title %}Integrations — CampusRipple{% endblock %}
+{% block content %}
+<section class="page-heading"><div><span class="eyebrow">ADMINISTRATION</span><h1>Data integrations</h1><p class="muted">Read-only source connector for authorized ACE Engineering College timetable data.</p></div></section>
+<section class="panel stack">
+  <h2>Official timetable API</h2>
+  {% if configured %}<p class="status-pill success">Connector configured</p><p>Endpoint and token are configured on the server. The secret is never displayed in this page.</p>
+  <form method="post" onsubmit="return confirm('Fetch the configured timetable and reconcile local records? Conflicts will stop the transaction.');"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><button class="button primary" type="submit">Run read-only source sync</button></form>
+  {% else %}<p class="status-pill warning">Not connected</p><p>Set <code>COLLEGE_DATA_API_URL</code> and <code>COLLEGE_DATA_API_TOKEN</code> only after the institution approves an API contract and supplies credentials. The connector requires HTTPS and a JSON <code>timetable</code> array.</p>{% endif %}
+  <p class="muted">This connector reads from the external system and writes validated records into CampusRipple. It never modifies the source system. Conflicting or invalid batches are rolled back.</p>
+</section>
+<section class="panel stack"><h2>Recent sync history</h2>
+  {% if runs %}<div class="table-wrap"><table><thead><tr><th>Started</th><th>Status</th><th>Rows</th><th>Created</th><th>Updated</th><th>Details</th></tr></thead><tbody>
+  {% for run in runs %}<tr><td>{{ run.started_at.strftime('%Y-%m-%d %H:%M UTC') }}</td><td>{{ run.status }}</td><td>{{ run.records_received }}</td><td>{{ run.records_created }}</td><td>{{ run.records_updated }}</td><td>{{ run.message }}</td></tr>{% endfor %}
+  </tbody></table></div>{% else %}<p class="muted">No synchronization attempts have been recorded.</p>{% endif %}
+</section>
+{% endblock %}

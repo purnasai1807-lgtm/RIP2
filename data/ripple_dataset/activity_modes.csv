@@ -1,0 +1,46 @@
+mode_id,activity_id,mode_name,duration_minutes,required_features,required_service_types,allowed,quality_penalty,notes
+A01-M1,A01,standard,90,exam_seating;quiet;seating,power,true,0,Normal operation; full declared requirements apply
+A02-M1,A02,standard,60,projector;seating,power,true,0,Normal operation; full declared requirements apply
+A03-M1,A03,standard,90,computers;network,power;network,true,0,Normal operation; full declared requirements apply
+A03-M2,A03,approved_offline_fallback,90,computers,power,true,100,"Explicitly approved offline mode; only removes network dependency, all other requirements remain"
+A04-M1,A04,standard,90,computers;quiet;assessment,power;network,true,0,Normal operation; full declared requirements apply
+A05-M1,A05,standard,60,projector;seating;review,power,true,0,Normal operation; full declared requirements apply
+A06-M1,A06,standard,60,private;counselling,power,true,0,Normal operation; full declared requirements apply
+A07-M1,A07,standard,90,computers;training,power,true,0,Normal operation; full declared requirements apply
+A07-M2,A07,approved_offline_fallback,90,computers;training,power,true,100,"Explicitly approved offline mode; only removes network dependency, all other requirements remain"
+A08-M1,A08,standard,30,seating;meeting,none,true,0,Normal operation; full declared requirements apply
+A09-M1,A09,standard,90,computers;quiet,network,true,0,Normal operation; full declared requirements apply
+A09-M2,A09,approved_offline_fallback,90,computers;quiet,none,true,100,"Explicitly approved offline mode; only removes network dependency, all other requirements remain"
+A10-M1,A10,standard,90,food_service;serving,power;water,true,0,Normal operation; full declared requirements apply
+A11-M1,A11,standard,60,auditorium;av;projector,power;av,true,0,Normal operation; full declared requirements apply
+A12-M1,A12,standard,90,specialist_lab;lab_benches;controlled_access,power;access,true,0,Normal operation; full declared requirements apply
+A13-M1,A13,standard,60,workstations;records,network,true,0,Normal operation; full declared requirements apply
+A13-M2,A13,approved_offline_fallback,60,workstations;records,none,true,100,"Explicitly approved offline mode; only removes network dependency, all other requirements remain"
+A14-M1,A14,standard,90,exam_seating;quiet,power,true,0,Normal operation; full declared requirements apply
+A15-M1,A15,standard,60,projector;review,power;network,true,0,Normal operation; full declared requirements apply
+A15-M2,A15,approved_offline_fallback,60,projector;review,power,true,100,"Explicitly approved offline mode; only removes network dependency, all other requirements remain"
+A16-M1,A16,standard,60,projector;showcase,power;network;av,true,0,Normal operation; full declared requirements apply
+A17-M1,A17,standard,60,specialist_lab;lab_benches;controlled_access,power;access,true,0,Normal operation; full declared requirements apply
+A18-M1,A18,standard,120,private;counselling,network,true,0,Normal operation; full declared requirements apply
+A19-M1,A19,standard,60,quiet;study,none,true,0,Normal operation; full declared requirements apply
+A20-M1,A20,standard,120,food_service;serving,water,true,0,Normal operation; full declared requirements apply
+A21-M1,A21,standard,60,av;projector,power;av,true,0,Normal operation; full declared requirements apply
+A22-M1,A22,standard,90,computers;network,power;network,true,0,Normal operation; full declared requirements apply
+A22-M2,A22,approved_offline_fallback,90,computers,power,true,100,"Explicitly approved offline mode; only removes network dependency, all other requirements remain"
+A23-M1,A23,standard,60,projector;meeting,power,true,0,Normal operation; full declared requirements apply
+A24-M1,A24,standard,90,auditorium;av;stage,power;av,true,0,Normal operation; full declared requirements apply
+A25-M1,A25,standard,60,computers;quiet,network,true,0,Normal operation; full declared requirements apply
+A25-M2,A25,approved_offline_fallback,60,computers;quiet,none,true,100,"Explicitly approved offline mode; only removes network dependency, all other requirements remain"
+A26-M1,A26,standard,30,specialist_lab;lab_benches;controlled_access,power;access,true,0,Normal operation; full declared requirements apply
+A27-M1,A27,standard,90,projector;showcase,power;network;av,true,0,Normal operation; full declared requirements apply
+A28-M1,A28,standard,60,workstations;records,network,true,0,Normal operation; full declared requirements apply
+A28-M2,A28,approved_offline_fallback,60,workstations;records,none,true,100,"Explicitly approved offline mode; only removes network dependency, all other requirements remain"
+A29-M1,A29,standard,30,seating;meeting,none,true,0,Normal operation; full declared requirements apply
+A30-M1,A30,standard,60,workstations;records,network,true,0,Normal operation; full declared requirements apply
+A30-M2,A30,approved_offline_fallback,60,workstations;records,none,true,100,"Explicitly approved offline mode; only removes network dependency, all other requirements remain"
+A31-M1,A31,standard,60,quiet;accessible;seating,none,true,0,Normal operation; full declared requirements apply
+A32-M1,A32,standard,60,private;counselling,none,true,0,Normal operation; full declared requirements apply
+A33-M1,A33,standard,90,computers;network,power;network,true,0,Normal operation; full declared requirements apply
+A33-M2,A33,approved_offline_fallback,90,computers,power,true,100,"Explicitly approved offline mode; only removes network dependency, all other requirements remain"
+A34-M1,A34,standard,90,projector;seating,power,true,0,Normal operation; full declared requirements apply
+A35-M1,A35,standard,45,seating;meeting,none,true,0,Normal operation; full declared requirements apply

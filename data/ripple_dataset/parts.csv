@@ -1,0 +1,8 @@
+part_id,quantity_available,storage_location,reserved_quantity,unit,reorder_threshold,compatible_job_ids,notes
+FUSE,2,ADM Stores,0,each,1,J01,Available quantity includes one contingency unit; a job consumes one unit on start
+BREAKER,3,ADM Stores,0,each,1,J02;J03,Available quantity includes one contingency unit; a job consumes one unit on start
+NETWORK_MODULE,2,ADM Stores,0,each,1,J04,Available quantity includes one contingency unit; a job consumes one unit on start
+PATCH_CORD,5,ADM Stores,0,each,1,J05;J06;J07;J12,Available quantity includes one contingency unit; a job consumes one unit on start
+VALVE_KIT,2,ADM Stores,0,each,1,J08,Available quantity includes one contingency unit; a job consumes one unit on start
+ACCESS_SENSOR,2,ADM Stores,0,each,1,J09,Available quantity includes one contingency unit; a job consumes one unit on start
+AV_CONTROLLER,2,ADM Stores,0,each,1,J10,Available quantity includes one contingency unit; a job consumes one unit on start

@@ -1,0 +1,10 @@
+building_id,name,building_type,opening_time,closing_time,site_contact_id,notes
+CAB,Central Academic Block,academic,09:00,16:30,FC01,Main examination and teaching block
+ABA,Academic Block A,academic_computing,09:00,16:30,FC02,Computer teaching and assessment
+ABB,Academic Block B,academic,09:00,16:30,FC03,Training and project review
+ABC,Academic Block C,student_support,09:00,16:30,FC04,Student support and flexible seminar rooms
+LIB,Central Library,library,09:00,16:30,FC05,"Study, research and quiet rooms"
+LAB,Central Laboratory,laboratory,09:00,16:30,FC06,Controlled access; specialist activities require lab technician
+AUD,Auditorium,event_venue,09:00,16:30,FC07,Large event venue; incident affects power
+CAN,Canteen Complex,food_service,08:00,16:30,FC08,Food handling requires water and power
+ADM,Administration Annex,administration,09:00,16:30,FC09,"Registration, records and a backup conference venue"

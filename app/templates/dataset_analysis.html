@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% block title %}Ripple dataset analysis — CampusRipple{% endblock %}
+{% block content %}
+<section class="hero compact">
+  <p class="eyebrow">THE RIPPLE · DATASET-BACKED INCIDENT ANALYSIS</p>
+  <h1>Campus Innovation Day crisis</h1>
+  <p>Analysis uses the supplied synthetic dataset v2.2. Select an incident variant to trace affected services and activities through recorded relationships.</p>
+</section>
+<section class="panel">
+  <div class="split"><h2>Scenario</h2><span class="pill">Synthetic dataset · v2.2</span></div>
+  <form method="get" class="form-grid">
+    <label>Incident variant
+      <select name="variant">
+        <option value="V1" {% if selected_variant == 'V1' %}selected{% endif %}>V1 — Compound incident (default)</option>
+        <option value="V2" {% if selected_variant == 'V2' %}selected{% endif %}>V2 — Network outage only</option>
+        <option value="V3" {% if selected_variant == 'V3' %}selected{% endif %}>V3 — Power and canteen water faults</option>
+      </select>
+    </label>
+    <button type="submit">Analyze dataset</button>
+  </form>
+  {% if not validation.valid %}
+  <div class="flash error"><strong>Dataset validation failed.</strong> Analysis should not be used. {{ validation.errors|join('; ') }}</div>
+  {% else %}
+  <p class="muted">Dataset integrity check passed: {{ validation.row_counts|length }} tables loaded; {{ validation.row_counts.values()|sum }} CSV records read; no broken key references detected by the current validator.</p>
+  {% endif %}
+</section>
+{% if result.ok %}
+<section class="panel">
+  <h2>Impact summary</h2>
+  <div class="metric-grid">
+    <article class="metric"><span>Initially affected services</span><strong>{{ result.summary.initially_affected_services }}</strong></article>
+    <article class="metric"><span>Services in dependency closure</span><strong>{{ result.summary.services_in_dependency_closure }}</strong></article>
+    <article class="metric"><span>Potentially disrupted activities</span><strong>{{ result.summary.potentially_disrupted_activities }} / {{ result.summary.activities_total }}</strong></article>
+    <article class="metric"><span>Rooms with service risks</span><strong>{{ result.summary.rooms_with_service_risks }}</strong></article>
+  </div>
+  <p><strong>Scenario:</strong> {{ result.scenario.description }}. Incident starts at {{ result.scenario.incident_start }} campus-local time.</p>
+  <p class="muted">{{ result.data_provenance }}</p>
+</section>
+<section class="panel">
+  <h2>Service dependency trace</h2>
+  <p class="muted">Paths show the recorded upstream-to-downstream service chain. The initial fault and downstream dependency impact are distinguished.</p>
+  <div class="table-wrap"><table><thead><tr><th>Service</th><th>Type / location</th><th>State in data</th><th>Impact origin</th><th>Causal path</th></tr></thead><tbody>
+  {% for service in result.services %}
+  <tr><td>{{ service.service_id }}</td><td>{{ service.service_type }} · {{ service.location_id }}</td><td>{{ service.initial_state }}</td><td>{% if service.is_initial_incident %}Initial incident{% else %}Downstream dependency{% endif %}</td><td>{{ service.causal_path|join(' → ') }}</td></tr>
+  {% endfor %}
+  </tbody></table></div>
+</section>
+<section class="panel">
+  <h2>Potentially affected activities</h2>
+  <p class="muted">These are impact flags, not a revised timetable. A valid alternative must still satisfy time windows, room capacity/features, service availability, staff qualifications and availability, activity dependencies, safety requirements, and cancellation policy.</p>
+  <div class="table-wrap"><table><thead><tr><th>ID / activity</th><th>Original slot</th><th>Room</th><th>Priority</th><th>Reason</th></tr></thead><tbody>
+  {% for activity in result.activities %}
+  <tr><td><strong>{{ activity.activity_id }}</strong><br>{{ activity.activity_name }}</td><td>{{ activity.original_start }}–{{ activity.original_end }}</td><td>{{ activity.original_room_id }}</td><td>{{ activity.priority }}</td><td>
+    {% if activity.blocking_or_risk_services %}
+      {% for item in activity.blocking_or_risk_services %}<div>{{ item.service_id }} ({{ item.state }}): {{ item.causal_path|join(' → ') }}</div>{% endfor %}
+    {% else %}Hard activity dependency on another impacted activity{% endif %}
+    {% if not activity.cancellation_allowed %}<small class="muted"> · Cancellation not permitted</small>{% endif %}
+  </td></tr>
+  {% endfor %}
+  </tbody></table></div>
+</section>
+<section class="panel">
+  <h2>Important limitations</h2>
+  <ul>{% for limitation in result.limitations %}<li>{{ limitation }}</li>{% endfor %}</ul>
+  <p><strong>API:</strong> <code>/api/dataset-analysis?variant={{ selected_variant }}</code> returns the same analysis as JSON (login required).</p>
+</section>
+{% endif %}
+{% endblock %}

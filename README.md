@@ -435,3 +435,7 @@ Open an incident and choose **Run ripple analysis** to trace potential consequen
 ### Phase 5 decision intelligence
 
 New analyses preserve a canonical input/evidence snapshot and fingerprints for reproducibility. After running an analysis, use **Verify analysis** on its detail page (or `GET /scenarios/<id>/verify-analysis`) to verify the saved inputs and results against deterministic replay. Admins can export reviewed labels from **Impact quality** for offline evaluation. Human feedback is not ground truth by itself; no model accuracy is claimed without a separately adjudicated held-out evaluation set. See `docs/PHASE5_DECISION_INTELLIGENCE.md`.
+
+## Phase 6: Uncertainty and evidence
+
+Phase 6 adds a scenario evidence register with source references, verification status, confidence, observation time, expiry, and notes. Unverified, disputed, stale, expired, and low-confidence records are surfaced as uncertainty impacts with validation recommendations. The evidence sensitivity action compares a hypothetical status without mutating saved evidence. See `docs/PHASE6_UNCERTAINTY_EVIDENCE.md` and apply the latest migration before use.

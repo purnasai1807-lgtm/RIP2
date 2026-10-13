@@ -1,6 +1,6 @@
 """College-focused, transparent rule-based impact analysis. Review all outputs against real college data."""
 
-RULE_VERSION = 'college-rules-2026.10.12.1'
+RULE_VERSION = 'college-rules-2026.10.13-phase6.1'
 
 RULES = {
     'Timetable & classrooms': [

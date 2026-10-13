@@ -3,6 +3,17 @@ import hashlib
 import os
 import subprocess
 from pathlib import Path
+import re
+
+def bash_script_path(path):
+    """Return a script path in the POSIX namespace used by Git Bash/WSL."""
+    resolved = Path(path).resolve()
+    raw = resolved.as_posix()
+    # Git Bash accepts /c/Users/... rather than C:/Users/... .
+    match = re.match(r"^([A-Za-z]):/(.*)$", raw)
+    if os.name == "nt" and match:
+        return f"/{match.group(1).lower()}/{match.group(2)}"
+    return raw
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "verify_backup_restore.sh"
 
@@ -20,7 +31,7 @@ def run_restore(tmp_path, *, backup=b"test-backup", checksum=True, target="postg
         "SOURCE_DATABASE_URL": source,
         "RESTORE_CONFIRM_DISPOSABLE": confirm,
     })
-    return subprocess.run(["bash", str(SCRIPT)], env=env, text=True, capture_output=True, check=False)
+    return subprocess.run(["bash", bash_script_path(SCRIPT)], env=env, text=True, capture_output=True, check=False)
 
 
 def test_restore_refuses_same_database_even_with_different_driver_prefix(tmp_path):
@@ -58,6 +69,6 @@ def test_restore_refuses_tampered_backup_checksum(tmp_path):
         "SOURCE_DATABASE_URL": "postgresql://user:pw@localhost:5432/source",
         "RESTORE_CONFIRM_DISPOSABLE": "true",
     })
-    result = subprocess.run(["bash", str(SCRIPT)], env=env, text=True, capture_output=True, check=False)
+    result = subprocess.run(["bash", bash_script_path(SCRIPT)], env=env, text=True, capture_output=True, check=False)
     assert result.returncode != 0
     assert "FAILED" in result.stdout or "checksum" in result.stderr.lower()

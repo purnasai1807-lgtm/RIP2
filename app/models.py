@@ -325,6 +325,25 @@ class ImpactFeedback(db.Model):
     __table_args__ = (db.UniqueConstraint('impact_id', 'user_id', name='uq_impact_feedback_user'),)
 
 
+class ScenarioEvidence(db.Model):
+    """Versionable, time-aware evidence and assumptions attached to a decision."""
+    id = db.Column(db.Integer, primary_key=True)
+    scenario_id = db.Column(db.Integer, db.ForeignKey('scenario.id', ondelete='CASCADE'), nullable=False, index=True)
+    created_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    label = db.Column(db.String(140), nullable=False)
+    source_type = db.Column(db.String(32), nullable=False, default='Manual')
+    source_ref = db.Column(db.String(240), nullable=False, default='')
+    status = db.Column(db.String(20), nullable=False, default='Unverified', index=True)
+    confidence = db.Column(db.Integer, nullable=False, default=50)
+    observed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    valid_until = db.Column(db.DateTime(timezone=True), nullable=True)
+    notes = db.Column(db.String(1200), nullable=False, default='')
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+    scenario = db.relationship('Scenario', backref=db.backref('evidence_records', cascade='all, delete-orphan', lazy=True, order_by='ScenarioEvidence.created_at.desc()'))
+    created_by = db.relationship('User')
+
+
 class CampusActivity(db.Model):
     """An operational activity that may be affected by a campus incident."""
     id = db.Column(db.Integer, primary_key=True)

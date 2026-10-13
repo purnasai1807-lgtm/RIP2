@@ -17,7 +17,7 @@ from werkzeug.exceptions import HTTPException
 from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError
 from . import db
-from .models import User, Scenario, Impact, Department, Course, Room, TimetableEntry, AuditEvent, ExamSchedule, CampusEvent, AcademicCalendarItem, MaintenanceRequest, AttendanceSession, AttendanceRecord, InventoryItem, Announcement, ServiceRequest, FacultySubstitution, InvigilatorAssignment, InAppNotification, LoginAttempt, IntegrationSyncRun, ImpactFeedback, CampusActivity, CampusResource, ActivityDependency, ResourceConstraint, CampusIncident, IncidentUpdate
+from .models import User, Scenario, Impact, Department, Course, Room, TimetableEntry, AuditEvent, ExamSchedule, CampusEvent, AcademicCalendarItem, MaintenanceRequest, AttendanceSession, AttendanceRecord, InventoryItem, Announcement, ServiceRequest, FacultySubstitution, InvigilatorAssignment, InAppNotification, LoginAttempt, IntegrationSyncRun, ImpactFeedback, ScenarioEvidence, CampusActivity, CampusResource, ActivityDependency, ResourceConstraint, CampusIncident, IncidentUpdate
 from .engine import analyze, RULE_VERSION
 from .direct_impact import analyze_direct_impacts
 from .ripple_impact import analyze_ripple_impacts
@@ -2132,6 +2132,129 @@ def register_routes(app):
             abort(404)
         return render_template('scenario_detail.html', scenario=scenario)
 
+    @app.post('/scenarios/<int:scenario_id>/evidence')
+    @login_required
+    def add_scenario_evidence(scenario_id):
+        scenario = owned_scenario(scenario_id)
+        label = (request.form.get('label') or '').strip()
+        source_type = (request.form.get('source_type') or 'Manual').strip()
+        source_ref = (request.form.get('source_ref') or '').strip()
+        status = (request.form.get('status') or 'Unverified').strip()
+        notes = (request.form.get('notes') or '').strip()
+        try:
+            confidence = int(request.form.get('confidence', '50'))
+        except (TypeError, ValueError):
+            confidence = -1
+        allowed_status = {'Verified', 'Unverified', 'Disputed', 'Stale'}
+        allowed_source = {'Manual', 'Official record', 'Sensor', 'Email', 'External system', 'Assumption'}
+        if not label or len(label) > 140 or len(source_ref) > 240 or len(notes) > 1200:
+            flash('Evidence needs a label (1–140 characters); source and notes must fit their limits.', 'error')
+            return redirect(url_for('scenario_detail', scenario_id=scenario.id) + '#phase6-evidence')
+        if status not in allowed_status or source_type not in allowed_source or not 0 <= confidence <= 100:
+            flash('Choose valid evidence status, source type, and confidence from 0 to 100.', 'error')
+            return redirect(url_for('scenario_detail', scenario_id=scenario.id) + '#phase6-evidence')
+        observed_at = _parse_optional_utc_datetime(request.form.get('observed_at'))
+        valid_until = _parse_optional_utc_datetime(request.form.get('valid_until'))
+        if request.form.get('observed_at') and observed_at is None or request.form.get('valid_until') and valid_until is None:
+            flash('Evidence timestamps must be valid dates and times.', 'error')
+            return redirect(url_for('scenario_detail', scenario_id=scenario.id) + '#phase6-evidence')
+        if observed_at and valid_until and valid_until < observed_at:
+            flash('Evidence expiry cannot be earlier than its observation time.', 'error')
+            return redirect(url_for('scenario_detail', scenario_id=scenario.id) + '#phase6-evidence')
+        record = ScenarioEvidence(scenario_id=scenario.id, created_by_id=current_user.id, label=label,
+                                  source_type=source_type, source_ref=source_ref, status=status,
+                                  confidence=confidence, observed_at=observed_at, valid_until=valid_until, notes=notes)
+        db.session.add(record)
+        scenario.status = 'Draft'
+        scenario.analysis_inputs_json = None
+        scenario.analysis_input_hash = None
+        scenario.analysis_result_hash = None
+        record_audit('scenario.evidence_added', 'ScenarioEvidence', None, f'scenario={scenario.id}; label={label[:80]}')
+        db.session.commit()
+        flash('Evidence saved. Re-run analysis so confidence and freshness are reflected in the conclusions.', 'success')
+        return redirect(url_for('scenario_detail', scenario_id=scenario.id) + '#phase6-evidence')
+
+    @app.post('/scenarios/<int:scenario_id>/evidence/<int:evidence_id>/update')
+    @login_required
+    def update_scenario_evidence(scenario_id, evidence_id):
+        scenario = owned_scenario(scenario_id)
+        record = ScenarioEvidence.query.filter_by(id=evidence_id, scenario_id=scenario.id).first_or_404()
+        status = (request.form.get('status') or '').strip()
+        try:
+            confidence = int(request.form.get('confidence', '-1'))
+        except (TypeError, ValueError):
+            confidence = -1
+        if status not in {'Verified', 'Unverified', 'Disputed', 'Stale'} or not 0 <= confidence <= 100:
+            flash('Choose a valid status and confidence between 0 and 100.', 'error')
+            return redirect(url_for('scenario_detail', scenario_id=scenario.id) + '#phase6-evidence')
+        record.status = status
+        record.confidence = confidence
+        record.source_ref = (request.form.get('source_ref') or '').strip()[:240]
+        record.notes = (request.form.get('notes') or '').strip()[:1200]
+        record.observed_at = _parse_optional_utc_datetime(request.form.get('observed_at'))
+        record.valid_until = _parse_optional_utc_datetime(request.form.get('valid_until'))
+        if request.form.get('observed_at') and record.observed_at is None or request.form.get('valid_until') and record.valid_until is None:
+            flash('Evidence timestamps must be valid dates and times.', 'error')
+            return redirect(url_for('scenario_detail', scenario_id=scenario.id) + '#phase6-evidence')
+        if record.observed_at and record.valid_until and record.valid_until < record.observed_at:
+            flash('Evidence expiry cannot be earlier than its observation time.', 'error')
+            return redirect(url_for('scenario_detail', scenario_id=scenario.id) + '#phase6-evidence')
+        scenario.status = 'Draft'
+        scenario.analysis_inputs_json = None
+        scenario.analysis_input_hash = None
+        scenario.analysis_result_hash = None
+        record_audit('scenario.evidence_updated', 'ScenarioEvidence', record.id, f'scenario={scenario.id}; status={status}; confidence={confidence}')
+        db.session.commit()
+        flash('Evidence updated. Re-run analysis to refresh conclusions.', 'success')
+        return redirect(url_for('scenario_detail', scenario_id=scenario.id) + '#phase6-evidence')
+
+    @app.post('/scenarios/<int:scenario_id>/evidence/<int:evidence_id>/delete')
+    @login_required
+    def delete_scenario_evidence(scenario_id, evidence_id):
+        scenario = owned_scenario(scenario_id)
+        record = ScenarioEvidence.query.filter_by(id=evidence_id, scenario_id=scenario.id).first_or_404()
+        db.session.delete(record)
+        scenario.status = 'Draft'
+        scenario.analysis_inputs_json = None
+        scenario.analysis_input_hash = None
+        scenario.analysis_result_hash = None
+        record_audit('scenario.evidence_removed', 'ScenarioEvidence', evidence_id, f'scenario={scenario.id}')
+        db.session.commit()
+        flash('Evidence removed. Re-run analysis to refresh the result.', 'success')
+        return redirect(url_for('scenario_detail', scenario_id=scenario.id) + '#phase6-evidence')
+
+    @app.post('/scenarios/<int:scenario_id>/sensitivity')
+    @login_required
+    def scenario_sensitivity(scenario_id):
+        scenario = owned_scenario(scenario_id)
+        evidence_id = request.form.get('evidence_id', type=int)
+        assumed_status = (request.form.get('assumed_status') or '').strip()
+        record = ScenarioEvidence.query.filter_by(id=evidence_id, scenario_id=scenario.id).first() if evidence_id else None
+        if not record or assumed_status not in {'Verified', 'Unverified', 'Disputed', 'Stale'}:
+            flash('Choose an evidence item and a valid alternative status.', 'error')
+            return redirect(url_for('scenario_detail', scenario_id=scenario.id) + '#phase6-evidence')
+        baseline_records = list(scenario.evidence_records)
+        baseline = _evidence_items_from_payloads([_scenario_evidence_payload(item) for item in baseline_records])
+        alternate_records = []
+        for item in baseline_records:
+            payload = _scenario_evidence_payload(item)
+            if item.id == record.id:
+                payload['status'] = assumed_status
+                if assumed_status == 'Verified':
+                    payload['confidence'] = max(80, payload['confidence'])
+                elif assumed_status in ('Disputed', 'Stale'):
+                    payload['confidence'] = min(35, payload['confidence'])
+            alternate_records.append(payload)
+        before = analyze(scenario.domain, scenario.change_variable, scenario.current_value, scenario.proposed_value, scenario.context,
+                         collect_impact_evidence(scenario.domain, scenario.change_variable, scenario.current_value, scenario.proposed_value, scenario.context) + baseline)
+        after = analyze(scenario.domain, scenario.change_variable, scenario.current_value, scenario.proposed_value, scenario.context,
+                        collect_impact_evidence(scenario.domain, scenario.change_variable, scenario.current_value, scenario.proposed_value, scenario.context) + _evidence_items_from_payloads(alternate_records))
+        from .evidence import compare_impacts
+        comparison = compare_impacts(before, after)
+        record_audit('scenario.evidence_sensitivity', 'ScenarioEvidence', record.id, f'scenario={scenario.id}; status={assumed_status}')
+        db.session.commit()
+        return render_template('scenario_sensitivity.html', scenario=scenario, evidence=record, assumed_status=assumed_status, comparison=comparison)
+
     @app.post('/impacts/<int:impact_id>/feedback')
     @login_required
     def impact_feedback(impact_id):
@@ -2201,13 +2324,16 @@ def register_routes(app):
     def analyze_scenario(scenario_id):
         scenario = owned_scenario(scenario_id)
         evidence = collect_impact_evidence(scenario.domain, scenario.change_variable, scenario.current_value, scenario.proposed_value, scenario.context)
+        evidence_records = [_scenario_evidence_payload(item) for item in scenario.evidence_records]
+        evidence.extend(_evidence_items_from_payloads(evidence_records))
         inputs = {
-            'schema_version': 'phase5-input-v1',
+            'schema_version': 'phase6-input-v1',
             'rule_version': RULE_VERSION,
             'scenario': {'title': scenario.title, 'domain': scenario.domain,
                          'change_variable': scenario.change_variable, 'current_value': scenario.current_value,
                          'proposed_value': scenario.proposed_value, 'context': scenario.context},
             'evidence': evidence,
+            'evidence_records': evidence_records,
         }
         result = analyze(scenario.domain, scenario.change_variable, scenario.current_value, scenario.proposed_value, scenario.context, evidence)
         scenario.impacts.clear()
@@ -2399,6 +2525,52 @@ def register_routes(app):
     @app.errorhandler(404)
     def not_found(error):
         return render_template('error.html', code=404, message='The page may have moved or you may not have access to it.'), 404
+
+
+def _parse_optional_utc_datetime(value):
+    value = (value or '').strip()
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except (TypeError, ValueError):
+        return None
+
+def _scenario_evidence_payload(record):
+    return {'id': record.id, 'label': record.label, 'source_type': record.source_type,
+            'source_ref': record.source_ref, 'status': record.status, 'confidence': int(record.confidence),
+            'observed_at': record.observed_at.isoformat() if record.observed_at else None,
+            'valid_until': record.valid_until.isoformat() if record.valid_until else None,
+            'notes': record.notes, 'created_at': record.created_at.isoformat() if record.created_at else None}
+
+def _evidence_items_from_payloads(records):
+    now = datetime.now(timezone.utc)
+    result = []
+    for record in records:
+        status = record.get('status', 'Unverified')
+        confidence = max(0, min(100, int(record.get('confidence', 50) or 0)))
+        stale = status == 'Stale'
+        valid_until = _parse_optional_utc_datetime(record.get('valid_until'))
+        observed_at = _parse_optional_utc_datetime(record.get('observed_at'))
+        if valid_until and valid_until < now:
+            stale = True
+        if observed_at and (now - observed_at).total_seconds() > 30 * 86400 and not valid_until:
+            stale = True
+        verified = status == 'Verified' and confidence >= 80 and not stale
+        result.append({
+            'level': 1, 'activity': ('Evidence verified: ' if verified else 'Uncertain assumption: ') + str(record.get('label') or 'Unnamed evidence')[:110],
+            'description': (str(record.get('notes') or 'Evidence record attached to this decision.')[:700] +
+                           f" Source type: {record.get('source_type', 'Manual')}; status: {'Stale' if stale else status}; confidence: {confidence}%."),
+            'cause': f"Evidence reference {record.get('source_ref') or 'not supplied'}; this input is {'treated as stronger evidence' if verified else 'not treated as confirmed fact'} until its source, freshness and confidence are validated.",
+            'mitigation': 'No additional action required beyond normal source validation.' if verified else 'Verify the source with the responsible owner, refresh expired information, and rerun the analysis before relying on downstream recommendations.',
+            'source': f"phase6 evidence register ({record.get('source_type', 'Manual')}; {status}; confidence {confidence}%)",
+            'evidence_ref': str(record.get('source_ref') or f"scenario-evidence:{record.get('id', 'new')}")[:160],
+            'severity': 'Medium', 'likelihood': 'High' if not verified else 'Medium',
+            'parent_activity': 'Proposed change'})
+    return result
 
 
 def scenario_form_data(form):

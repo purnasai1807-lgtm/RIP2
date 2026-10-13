@@ -443,3 +443,23 @@ class IncidentUpdate(db.Model):
     note = db.Column(db.String(2000), nullable=False, default='')
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, index=True)
     user = db.relationship('User')
+
+
+class MitigationAction(db.Model):
+    """Phase 7: owned, auditable mitigation and recovery tasks for a decision."""
+    id = db.Column(db.Integer, primary_key=True)
+    scenario_id = db.Column(db.Integer, db.ForeignKey('scenario.id', ondelete='CASCADE'), nullable=False, index=True)
+    impact_id = db.Column(db.Integer, db.ForeignKey('impact.id', ondelete='SET NULL'), nullable=True, index=True)
+    created_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    title = db.Column(db.String(160), nullable=False)
+    description = db.Column(db.String(1600), nullable=False, default='')
+    owner_name = db.Column(db.String(120), nullable=False, default='Unassigned')
+    priority = db.Column(db.String(12), nullable=False, default='Medium')
+    status = db.Column(db.String(20), nullable=False, default='Open', index=True)
+    due_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    completion_note = db.Column(db.String(1200), nullable=False, default='')
+    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow)
+    scenario = db.relationship('Scenario', backref=db.backref('mitigation_actions', cascade='all, delete-orphan', lazy=True, order_by='MitigationAction.created_at.desc()'))
+    impact = db.relationship('Impact')
+    created_by = db.relationship('User')

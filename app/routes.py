@@ -17,7 +17,7 @@ from werkzeug.exceptions import HTTPException
 from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError
 from . import db
-from .models import User, Scenario, Impact, Department, Course, Room, TimetableEntry, AuditEvent, ExamSchedule, CampusEvent, AcademicCalendarItem, MaintenanceRequest, AttendanceSession, AttendanceRecord, InventoryItem, Announcement, ServiceRequest, FacultySubstitution, InvigilatorAssignment, InAppNotification, LoginAttempt, IntegrationSyncRun, ImpactFeedback, ScenarioEvidence, CampusActivity, CampusResource, ActivityDependency, ResourceConstraint, CampusIncident, IncidentUpdate
+from .models import User, Scenario, Impact, Department, Course, Room, TimetableEntry, AuditEvent, ExamSchedule, CampusEvent, AcademicCalendarItem, MaintenanceRequest, AttendanceSession, AttendanceRecord, InventoryItem, Announcement, ServiceRequest, FacultySubstitution, InvigilatorAssignment, InAppNotification, LoginAttempt, IntegrationSyncRun, ImpactFeedback, ScenarioEvidence, CampusActivity, CampusResource, ActivityDependency, ResourceConstraint, CampusIncident, IncidentUpdate, MitigationAction
 from .engine import analyze, RULE_VERSION
 from .direct_impact import analyze_direct_impacts
 from .ripple_impact import analyze_ripple_impacts
@@ -2131,6 +2131,55 @@ def register_routes(app):
         if not scenario or (scenario.user_id != current_user.id and current_user.role not in ('coordinator', 'admin')):
             abort(404)
         return render_template('scenario_detail.html', scenario=scenario)
+
+    @app.post('/scenarios/<int:scenario_id>/actions')
+    @login_required
+    def add_mitigation_action(scenario_id):
+        scenario = owned_scenario(scenario_id)
+        title = (request.form.get('title') or '').strip()
+        description = (request.form.get('description') or '').strip()
+        owner_name = (request.form.get('owner_name') or 'Unassigned').strip() or 'Unassigned'
+        priority = (request.form.get('priority') or 'Medium').strip()
+        impact_raw = (request.form.get('impact_id') or '').strip()
+        due_raw = (request.form.get('due_at') or '').strip()
+        if not title or len(title) > 160 or len(description) > 1600 or len(owner_name) > 120:
+            flash('Enter a task title and keep all fields within their length limits.', 'error')
+            return redirect(url_for('scenario_detail', scenario_id=scenario.id) + '#phase7-actions')
+        if priority not in {'Critical','High','Medium','Low'}:
+            abort(400)
+        impact = None
+        if impact_raw:
+            try: impact = Impact.query.filter_by(id=int(impact_raw), scenario_id=scenario.id).first()
+            except ValueError: impact = None
+            if impact is None: abort(400)
+        due_at = _parse_optional_utc_datetime(due_raw)
+        if due_raw and due_at is None:
+            flash('Due date is invalid.', 'error')
+            return redirect(url_for('scenario_detail', scenario_id=scenario.id) + '#phase7-actions')
+        action = MitigationAction(scenario_id=scenario.id, impact_id=impact.id if impact else None,
+            created_by_id=current_user.id, title=title, description=description, owner_name=owner_name,
+            priority=priority, status='Open', due_at=due_at)
+        db.session.add(action)
+        record_audit('mitigation.created', 'MitigationAction', None, title)
+        db.session.commit()
+        flash('Mitigation task created.', 'success')
+        return redirect(url_for('scenario_detail', scenario_id=scenario.id) + '#phase7-actions')
+
+    @app.post('/scenarios/<int:scenario_id>/actions/<int:action_id>')
+    @login_required
+    def update_mitigation_action(scenario_id, action_id):
+        scenario = owned_scenario(scenario_id)
+        action = MitigationAction.query.filter_by(id=action_id, scenario_id=scenario.id).first_or_404()
+        status = (request.form.get('status') or '').strip()
+        note = (request.form.get('completion_note') or '').strip()
+        if status not in {'Open','In Progress','Blocked','Completed','Cancelled'} or len(note) > 1200:
+            abort(400)
+        action.status = status
+        action.completion_note = note
+        record_audit('mitigation.updated', 'MitigationAction', action.id, f'{status}: {action.title}')
+        db.session.commit()
+        flash('Mitigation task updated.', 'success')
+        return redirect(url_for('scenario_detail', scenario_id=scenario.id) + '#phase7-actions')
 
     @app.post('/scenarios/<int:scenario_id>/evidence')
     @login_required

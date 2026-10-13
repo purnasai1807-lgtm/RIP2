@@ -37,3 +37,27 @@ def test_unknown_variant_is_rejected():
     except ValueError:
         return
     assert False, "Unknown scenario variants must not be silently accepted"
+
+
+def test_all_supplied_dataset_tables_are_loaded_and_reported():
+    report = engine.dataset_report("V1")
+    assert report["ok"]
+    assert report["dataset"]["csv_tables_loaded"] == 19
+    assert report["dataset"]["files_loaded"] == 20
+    assert report["dataset"]["records_loaded"] == 567
+    assert report["inventory"]["rooms"] == 26
+    assert report["inventory"]["staff_directory"] == 62
+    assert report["inventory"]["engineering_personnel"] == 30
+    assert report["constraint_summary"]["hard"] > 0
+    assert len(report["repair_jobs"]) == 11
+    assert report["limitations"]
+
+def test_dataset_report_variants_and_policy():
+    v1 = engine.dataset_report("V1")
+    v2 = engine.dataset_report("V2")
+    v3 = engine.dataset_report("V3")
+    assert v1["analysis"]["summary"]["initially_affected_services"] == 10
+    assert v2["analysis"]["summary"]["initially_affected_services"] == 1
+    assert v3["analysis"]["summary"]["initially_affected_services"] == 4
+    assert v1["policy_summary"]["cancellation_allowed_activities"] == 10
+    assert v1["policy_summary"]["cancellable_critical_or_mandatory_violations"] == []

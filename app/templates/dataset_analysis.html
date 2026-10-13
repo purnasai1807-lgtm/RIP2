@@ -1,68 +1,125 @@
 {% extends 'base.html' %}
-{% block title %}Ripple dataset analysis — CampusRipple{% endblock %}
+{% block title %}THE RIPPLE dataset — CampusRipple{% endblock %}
 {% block content %}
 <section class="hero compact">
-  <p class="eyebrow">THE RIPPLE · DATASET-BACKED INCIDENT ANALYSIS</p>
-  <h1>Campus Innovation Day crisis</h1>
-  <p>Analysis uses the supplied synthetic dataset v2.2. Select an incident variant to trace affected services and activities through recorded relationships.</p>
+  <p class="eyebrow">THE RIPPLE · COMPLETE DATASET IMPORT & ANALYSIS</p>
+  <h1>Campus crisis dataset</h1>
+  <p>Every CSV table and the incident JSON from the supplied dataset are loaded from the project bundle. Choose a scenario variant to inspect dependency-driven service and activity impacts.</p>
 </section>
+
 <section class="panel">
-  <div class="split"><h2>Scenario</h2><span class="pill">Synthetic dataset · v2.2</span></div>
+  <div class="split">
+    <div><h2>Dataset status</h2><p class="muted">{{ report.dataset.name }} · version {{ report.dataset.version }}</p></div>
+    <span class="pill">{% if validation.valid %}Validation passed{% else %}Validation errors{% endif %}</span>
+  </div>
+  <div class="metric-grid">
+    <article class="metric"><span>Files loaded</span><strong>{{ report.dataset.files_loaded }}</strong></article>
+    <article class="metric"><span>CSV records loaded</span><strong>{{ report.dataset.records_loaded }}</strong></article>
+    <article class="metric"><span>Activities</span><strong>{{ report.inventory.activities }}</strong></article>
+    <article class="metric"><span>Services</span><strong>{{ report.inventory.services }}</strong></article>
+  </div>
+  <p><a class="button secondary" href="{{ url_for('dataset_download') }}">Download bundled dataset ZIP</a>
+     <a class="button secondary" href="{{ url_for('api_dataset_analysis', variant=selected_variant) }}">View JSON analysis</a></p>
+  {% if not validation.valid %}
+    <div class="flash error"><strong>Validation failed.</strong><ul>{% for error in validation.errors %}<li>{{ error }}</li>{% endfor %}</ul></div>
+  {% else %}
+    <p class="muted">Reference validation passed with {{ validation.errors|length }} errors and {{ validation.warnings|length }} warnings.</p>
+  {% endif %}
+  {% if validation.warnings %}<ul>{% for warning in validation.warnings %}<li>{{ warning }}</li>{% endfor %}</ul>{% endif %}
+</section>
+
+<section class="panel">
+  <h2>All imported tables</h2>
+  <p class="muted">These counts are loaded directly from the bundled CSVs at analysis time, not copied from a hard-coded dashboard summary.</p>
+  <div class="table-wrap"><table><thead><tr><th>Dataset file</th><th>Records</th></tr></thead><tbody>
+  {% for name, count in report.dataset.row_counts|dictsort %}
+    <tr><td>{{ name }}.csv</td><td>{{ count }}</td></tr>
+  {% endfor %}
+  <tr><td>incident.json</td><td>1 document</td></tr>
+  </tbody></table></div>
+  <div class="table-wrap"><table><thead><tr><th>Domain</th><th>Imported data</th></tr></thead><tbody>
+    {% for label, count in report.inventory.items() %}
+      <tr><td>{{ label.replace('_', ' ')|title }}</td><td>{{ count }}</td></tr>
+    {% endfor %}
+  </tbody></table></div>
+</section>
+
+<section class="panel">
+  <h2>Scenario impact analysis</h2>
   <form method="get" class="form-grid">
     <label>Incident variant
       <select name="variant">
-        <option value="V1" {% if selected_variant == 'V1' %}selected{% endif %}>V1 — Compound incident (default)</option>
-        <option value="V2" {% if selected_variant == 'V2' %}selected{% endif %}>V2 — Network outage only</option>
+        <option value="V1" {% if selected_variant == 'V1' %}selected{% endif %}>V1 — Compound incident</option>
+        <option value="V2" {% if selected_variant == 'V2' %}selected{% endif %}>V2 — Network backbone outage</option>
         <option value="V3" {% if selected_variant == 'V3' %}selected{% endif %}>V3 — Power and canteen water faults</option>
       </select>
     </label>
-    <button type="submit">Analyze dataset</button>
+    <button type="submit">Analyze selected variant</button>
   </form>
-  {% if not validation.valid %}
-  <div class="flash error"><strong>Dataset validation failed.</strong> Analysis should not be used. {{ validation.errors|join('; ') }}</div>
-  {% else %}
-  <p class="muted">Dataset integrity check passed: {{ validation.row_counts|length }} tables loaded; {{ validation.row_counts.values()|sum }} CSV records read; no broken key references detected by the current validator.</p>
-  {% endif %}
-</section>
-{% if result.ok %}
-<section class="panel">
-  <h2>Impact summary</h2>
+  {% if result.ok %}
+  <p><strong>{{ result.scenario.description }}</strong> Incident begins at {{ result.scenario.incident_start }} campus-local time.</p>
   <div class="metric-grid">
-    <article class="metric"><span>Initially affected services</span><strong>{{ result.summary.initially_affected_services }}</strong></article>
-    <article class="metric"><span>Services in dependency closure</span><strong>{{ result.summary.services_in_dependency_closure }}</strong></article>
+    <article class="metric"><span>Initial service faults</span><strong>{{ result.summary.initially_affected_services }}</strong></article>
+    <article class="metric"><span>Services in ripple closure</span><strong>{{ result.summary.services_in_dependency_closure }}</strong></article>
     <article class="metric"><span>Potentially disrupted activities</span><strong>{{ result.summary.potentially_disrupted_activities }} / {{ result.summary.activities_total }}</strong></article>
     <article class="metric"><span>Rooms with service risks</span><strong>{{ result.summary.rooms_with_service_risks }}</strong></article>
   </div>
-  <p><strong>Scenario:</strong> {{ result.scenario.description }}. Incident starts at {{ result.scenario.incident_start }} campus-local time.</p>
   <p class="muted">{{ result.data_provenance }}</p>
-</section>
-<section class="panel">
-  <h2>Service dependency trace</h2>
-  <p class="muted">Paths show the recorded upstream-to-downstream service chain. The initial fault and downstream dependency impact are distinguished.</p>
-  <div class="table-wrap"><table><thead><tr><th>Service</th><th>Type / location</th><th>State in data</th><th>Impact origin</th><th>Causal path</th></tr></thead><tbody>
+  <h3>Service state inventory</h3>
+  <div class="table-wrap"><table><thead><tr><th>Initial state</th><th>Services</th></tr></thead><tbody>
+  {% for state, count in report.service_state_counts|dictsort %}<tr><td>{{ state }}</td><td>{{ count }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  <h3>Service ripple trace</h3>
+  <div class="table-wrap"><table><thead><tr><th>Service</th><th>Type / location</th><th>State</th><th>Origin</th><th>Causal path</th></tr></thead><tbody>
   {% for service in result.services %}
-  <tr><td>{{ service.service_id }}</td><td>{{ service.service_type }} · {{ service.location_id }}</td><td>{{ service.initial_state }}</td><td>{% if service.is_initial_incident %}Initial incident{% else %}Downstream dependency{% endif %}</td><td>{{ service.causal_path|join(' → ') }}</td></tr>
+    <tr><td>{{ service.service_id }}</td><td>{{ service.service_type }} / {{ service.location_id }}</td><td>{{ service.initial_state }}</td><td>{% if service.is_initial_incident %}Initial fault{% else %}Downstream{% endif %}</td><td>{{ service.causal_path|join(' → ') }}</td></tr>
   {% endfor %}
   </tbody></table></div>
-</section>
-<section class="panel">
-  <h2>Potentially affected activities</h2>
-  <p class="muted">These are impact flags, not a revised timetable. A valid alternative must still satisfy time windows, room capacity/features, service availability, staff qualifications and availability, activity dependencies, safety requirements, and cancellation policy.</p>
-  <div class="table-wrap"><table><thead><tr><th>ID / activity</th><th>Original slot</th><th>Room</th><th>Priority</th><th>Reason</th></tr></thead><tbody>
+  <h3>Potentially affected activities</h3>
+  <div class="table-wrap"><table><thead><tr><th>ID / activity</th><th>Original slot</th><th>Room</th><th>Priority</th><th>Impact reason</th><th>Cancellation policy</th></tr></thead><tbody>
   {% for activity in result.activities %}
-  <tr><td><strong>{{ activity.activity_id }}</strong><br>{{ activity.activity_name }}</td><td>{{ activity.original_start }}–{{ activity.original_end }}</td><td>{{ activity.original_room_id }}</td><td>{{ activity.priority }}</td><td>
-    {% if activity.blocking_or_risk_services %}
-      {% for item in activity.blocking_or_risk_services %}<div>{{ item.service_id }} ({{ item.state }}): {{ item.causal_path|join(' → ') }}</div>{% endfor %}
-    {% else %}Hard activity dependency on another impacted activity{% endif %}
-    {% if not activity.cancellation_allowed %}<small class="muted"> · Cancellation not permitted</small>{% endif %}
-  </td></tr>
+    <tr><td><strong>{{ activity.activity_id }}</strong><br>{{ activity.activity_name }}</td><td>{{ activity.original_start }}–{{ activity.original_end }}</td><td>{{ activity.original_room_id }}</td><td>{{ activity.priority }}</td><td>{% if activity.blocking_or_risk_services %}{% for item in activity.blocking_or_risk_services %}<div>{{ item.service_id }} ({{ item.state }}): {{ item.causal_path|join(' → ') }}</div>{% endfor %}{% else %}Hard activity dependency on an impacted activity{% endif %}</td><td>{% if activity.cancellation_allowed %}Allowed only under supplied policy{% else %}Not allowed{% endif %}</td></tr>
+  {% endfor %}
+  </tbody></table></div>
+  {% else %}<div class="flash error">Analysis did not run because the dataset failed validation.</div>{% endif %}
+</section>
+
+<section class="panel">
+  <h2>Constraints and operating policy</h2>
+  <div class="metric-grid">
+    <article class="metric"><span>Hard constraints</span><strong>{{ report.constraint_summary.hard }}</strong></article>
+    <article class="metric"><span>Soft constraints / penalties</span><strong>{{ report.constraint_summary.soft }}</strong></article>
+    <article class="metric"><span>Activities eligible for cancellation</span><strong>{{ report.policy_summary.cancellation_allowed_activities }}</strong></article>
+    <article class="metric"><span>Activities with approved modes</span><strong>{{ report.policy_summary.activities_with_approved_modes }}</strong></article>
+  </div>
+  <div class="table-wrap"><table><thead><tr><th>ID</th><th>Level</th><th>Scope</th><th>Rule</th><th>Enforcement</th></tr></thead><tbody>
+  {% for c in report.constraint_summary.items %}<tr><td>{{ c.constraint_id }}</td><td>{{ c.level }}</td><td>{{ c.scope }}</td><td>{{ c.rule }}</td><td>{{ c.enforcement }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  {% if report.policy_summary.cancellable_critical_or_mandatory_violations %}<p class="flash error">Policy error: critical/mandatory activities marked cancellable: {{ report.policy_summary.cancellable_critical_or_mandatory_violations|join(', ') }}</p>{% endif %}
+</section>
+
+<section class="panel">
+  <h2>Engineering repair and parts analysis</h2>
+  <p class="muted">The supplied repair map is treated as authoritative. A stock check is not a repair schedule and does not certify a technician's availability or successful verification.</p>
+  <div class="table-wrap"><table><thead><tr><th>Job</th><th>Asset</th><th>Targets</th><th>Skill</th><th>Prerequisite</th><th>Part</th><th>Free stock</th><th>Eligible engineers</th><th>Verification</th></tr></thead><tbody>
+  {% for job in report.repair_jobs %}
+    <tr><td>{{ job.request_id }}</td><td>{{ job.asset_id }}</td><td>{{ job.target_service_ids|join(', ') }}</td><td>{{ job.required_skill }}</td><td>{{ job.prerequisite_request_id or 'None' }}</td><td>{{ job.part_required or 'None' }}</td><td>{% if job.part_available_units is none %}Unknown{% else %}{{ job.part_available_units }}{% endif %}</td><td>{{ job.eligible_staff_count }}</td><td>{{ job.verification_minutes }} min</td></tr>
   {% endfor %}
   </tbody></table></div>
 </section>
+
 <section class="panel">
-  <h2>Important limitations</h2>
-  <ul>{% for limitation in result.limitations %}<li>{{ limitation }}</li>{% endfor %}</ul>
-  <p><strong>API:</strong> <code>/api/dataset-analysis?variant={{ selected_variant }}</code> returns the same analysis as JSON (login required).</p>
+  <h2>Staffing and priority overview</h2>
+  <div class="table-wrap"><table><thead><tr><th>Priority</th><th>Activities</th></tr></thead><tbody>
+  {% for priority, count in report.activity_priority_counts|dictsort %}<tr><td>{{ priority }}</td><td>{{ count }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  <p>Directory: {{ report.staffing_summary.directory_staff }} staff records · {{ report.staffing_summary.baseline_assignments }} baseline assignments · {{ report.staffing_summary.engineering_personnel }} engineering personnel.</p>
+  {% if report.staffing_summary.activities_without_any_baseline_assignment %}<p class="muted">Activities without a baseline staff assignment row: {{ report.staffing_summary.activities_without_any_baseline_assignment|join(', ') }}. Verify required roles against the activity and staff qualification tables.</p>{% endif %}
 </section>
-{% endif %}
+
+<section class="panel">
+  <h2>Interpretation and limitations</h2>
+  <ul>{% for limitation in report.limitations %}<li>{{ limitation }}</li>{% endfor %}</ul>
+  <p><strong>JSON API:</strong> <code>/api/dataset-analysis?variant={{ selected_variant }}</code> (login required).</p>
+</section>
 {% endblock %}

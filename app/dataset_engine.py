@@ -76,6 +76,61 @@ def validate_dataset(dataset=None, data_dir: Path | str = DATA_DIR):
         errors.append("Activities and services must not be empty")
     if any(not r.get("initial_state") for r in t["services"]):
         warnings.append("Some service states are missing; these must be treated as unknown, not healthy.")
+
+    # Validate references across every supplied table, not only the impact graph.
+    building_ids = {r.get("building_id") for r in t["buildings"]}
+    staff_ids = {r.get("staff_id") for r in t["staff_directory"]}
+    role_ids = {r.get("role_id") for r in t["staff_roles"]}
+    contact_ids = {r.get("contact_id") for r in t["facility_contacts"]}
+    mode_ids = {r.get("mode_id") for r in t["activity_modes"]}
+    request_ids = {r.get("request_id") for r in t["work_requests"]}
+    part_ids = {r.get("part_id") for r in t["parts"]}
+    for row in t["rooms"]:
+        if row.get("building_id") not in building_ids:
+            errors.append(f"room {row.get('room_id')} references unknown building {row.get('building_id')}")
+        if row.get("facility_incharge_id") and row["facility_incharge_id"] not in contact_ids:
+            errors.append(f"room {row.get('room_id')} references unknown facility contact {row['facility_incharge_id']}")
+    for row in t["buildings"]:
+        if row.get("site_contact_id") and row["site_contact_id"] not in contact_ids:
+            errors.append(f"building {row.get('building_id')} references unknown contact {row['site_contact_id']}")
+    for row in t["facility_contacts"]:
+        if row.get("primary_building_id") and row["primary_building_id"] not in building_ids:
+            errors.append(f"contact {row.get('contact_id')} references unknown building {row['primary_building_id']}")
+    for row in t["activity_modes"]:
+        if row.get("activity_id") not in activity_ids:
+            errors.append(f"activity mode {row.get('mode_id')} references unknown activity {row.get('activity_id')}")
+    for row in t["room_availability"]:
+        if row.get("room_id") not in room_ids:
+            errors.append(f"room availability {row.get('availability_id')} references unknown room {row.get('room_id')}")
+    for row in t["staff_assignments"]:
+        if row.get("activity_id") not in activity_ids or row.get("staff_id") not in staff_ids:
+            errors.append(f"staff assignment {row.get('assignment_id')} has unknown activity or staff")
+    for row in t["work_requests"]:
+        for request_id in _split(row.get("target_service_ids")):
+            if request_id not in service_ids:
+                errors.append(f"work request {row.get('request_id')} targets unknown service {request_id}")
+        if row.get("part_required") and row["part_required"] not in part_ids:
+            errors.append(f"work request {row.get('request_id')} requires unknown part {row['part_required']}")
+        for person_id in _split(row.get("eligible_staff")):
+            if person_id not in {r.get("person_id") for r in t["engineering_personnel"]}:
+                errors.append(f"work request {row.get('request_id')} lists unknown engineer {person_id}")
+    for row in t["service_repair_map"]:
+        if row.get("request_id") not in request_ids:
+            errors.append(f"repair map references unknown request {row.get('request_id')}")
+    for row in t["parts"]:
+        for job_id in _split(row.get("compatible_job_ids")):
+            if job_id not in request_ids:
+                errors.append(f"part {row.get('part_id')} references unknown compatible job {job_id}")
+    for row in t["activities"]:
+        if row.get("cancellation_allowed", "").strip().lower() != "true" and row.get("priority", "").strip().lower() in {"critical", "mandatory"}:
+            # Expected policy; explicitly document rather than silently relax it.
+            pass
+        elif row.get("priority", "").strip().lower() in {"critical", "mandatory"} and row.get("cancellation_allowed", "").strip().lower() == "true":
+            errors.append(f"critical/mandatory activity {row.get('activity_id')} must not allow cancellation")
+    if len(t["constraints"]) == 0:
+        warnings.append("No constraint catalogue was supplied.")
+    if len(t["staff_assignments"]) == 0:
+        warnings.append("No baseline staff assignments were supplied.")
     return {
         "valid": not errors, "errors": errors, "warnings": warnings,
         "row_counts": {name: len(rows) for name, rows in t.items()},
@@ -212,5 +267,109 @@ def analyze_incident(variant_id: str = "V1", data_dir: Path | str = DATA_DIR):
             "This release computes dependency-based impact flags; it does not yet solve or certify a complete revised timetable.",
             "Service restoration times are not guessed. Work requests require qualified staff, prerequisites, parts, work duration and verification.",
             "The supplied package is synthetic teaching data, not verified live ACE Engineering College operational data.",
+        ],
+    }
+
+
+def dataset_report(variant_id: str = "V1", data_dir: Path | str = DATA_DIR):
+    """Build an auditable inventory and decision-support report over all supplied tables."""
+    ds = load_dataset(data_dir)
+    validation = validate_dataset(ds)
+    incident_result = analyze_incident(variant_id, data_dir)
+    if not incident_result.get("ok"):
+        return incident_result
+    t = ds["tables"]
+    def count(table, predicate):
+        return sum(1 for row in t[table] if predicate(row))
+    activities = t["activities"]
+    services = t["services"]
+    work = t["work_requests"]
+    parts = t["parts"]
+    staff = t["staff_directory"]
+    engineers = t["engineering_personnel"]
+    room_services = t["room_services"]
+    activity_modes = t["activity_modes"]
+    constraints = t["constraints"]
+    hard = [r for r in constraints if r.get("level", "").strip().lower() == "hard"]
+    soft = [r for r in constraints if r.get("level", "").strip().lower() == "soft"]
+    cancellation_allowed = [r for r in activities if r.get("cancellation_allowed", "").strip().lower() == "true"]
+    critical_cancellable = [r for r in cancellation_allowed if r.get("priority", "").strip().lower() in {"critical", "mandatory"}]
+    part_stock = {r["part_id"]: r for r in parts}
+    repair_jobs = []
+    for job in work:
+        part_id = job.get("part_required", "")
+        stock = part_stock.get(part_id)
+        try:
+            available = int(stock.get("quantity_available", "0")) - int(stock.get("reserved_quantity", "0")) if stock else None
+        except (TypeError, ValueError):
+            available = None
+        repair_jobs.append({
+            "request_id": job.get("request_id"), "asset_id": job.get("asset_id"),
+            "target_service_ids": _split(job.get("target_service_ids")),
+            "required_skill": job.get("required_skill"), "prerequisite_request_id": job.get("prerequisite_request_id") or None,
+            "part_required": part_id or None, "part_available_units": available,
+            "part_sufficient": (available is not None and available > 0) if part_id else True,
+            "verification_minutes": int(job.get("verification_minutes") or 0),
+            "eligible_staff_count": len(_split(job.get("eligible_staff"))),
+            "status": job.get("status"), "work_units": float(job.get("work_units") or 0),
+        })
+    room_service_counts = defaultdict(int)
+    for row in room_services:
+        room_service_counts[row.get("room_id")] += 1
+    service_states = defaultdict(int)
+    for row in services:
+        service_states[(row.get("initial_state") or "unknown").strip().lower()] += 1
+    priority_counts = defaultdict(int)
+    for row in activities:
+        priority_counts[(row.get("priority") or "unknown").strip().lower()] += 1
+    return {
+        "ok": True,
+        "dataset": {
+            "name": ds["incident"].get("scenario_name", "THE RIPPLE dataset"),
+            "incident_id": ds["incident"].get("incident_id"),
+            "version": validation["dataset_version"],
+            "files_loaded": len(t) + 1,
+            "csv_tables_loaded": len(t),
+            "records_loaded": sum(len(rows) for rows in t.values()),
+            "row_counts": validation["row_counts"],
+            "data_dir": "data/ripple_dataset/",
+        },
+        "validation": validation,
+        "analysis": incident_result,
+        "inventory": {
+            "buildings": len(t["buildings"]), "rooms": len(t["rooms"]),
+            "activities": len(activities), "activity_modes": len(activity_modes),
+            "services": len(services), "room_service_links": len(room_services),
+            "service_dependency_links": len(t["service_links"]),
+            "activity_dependencies": len(t["dependencies"]),
+            "staff_directory": len(staff), "staff_assignments": len(t["staff_assignments"]),
+            "staff_roles": len(t["staff_roles"]), "engineering_personnel": len(engineers),
+            "work_requests": len(work), "parts": len(parts), "constraints": len(constraints),
+            "facility_contacts": len(t["facility_contacts"]), "room_availability_windows": len(t["room_availability"]),
+            "room_feature_definitions": len(t["room_features"]),
+            "service_repair_mappings": len(t["service_repair_map"]),
+        },
+        "service_state_counts": dict(service_states),
+        "activity_priority_counts": dict(priority_counts),
+        "constraint_summary": {"hard": len(hard), "soft": len(soft), "total": len(constraints), "items": constraints},
+        "repair_jobs": repair_jobs,
+        "policy_summary": {
+            "cancellation_allowed_activities": len(cancellation_allowed),
+            "cancellable_critical_or_mandatory_violations": [r.get("activity_id") for r in critical_cancellable],
+            "critical_or_mandatory_activities": count("activities", lambda r: r.get("priority", "").strip().lower() in {"critical", "mandatory"}),
+            "activities_with_approved_modes": len({r.get("activity_id") for r in activity_modes if r.get("allowed", "").strip().lower() == "true"}),
+        },
+        "staffing_summary": {
+            "directory_staff": len(staff), "baseline_assignments": len(t["staff_assignments"]),
+            "engineering_personnel": len(engineers),
+            "activities_without_any_baseline_assignment": sorted(
+                a.get("activity_id") for a in activities
+                if not any(x.get("activity_id") == a.get("activity_id") for x in t["staff_assignments"])
+            ),
+        },
+        "limitations": incident_result["limitations"] + [
+            "This report imports the supplied CSV/JSON files as a read-only bundled dataset; it does not insert synthetic records into the institution's operational database.",
+            "Repair-job part availability is a stock-count screen only; it does not prove engineer assignment, full-duration availability, prerequisite completion, or successful verification.",
+            "Staff assignment counts are a baseline-data summary, not a complete proof that all staff remain conflict-free after rescheduling.",
         ],
     }

@@ -415,3 +415,14 @@ Vercel auto-detects the Flask app from `wsgi.py` (`app = create_app()`); `vercel
 4. Redeploy after any environment-variable change, then check `/healthz`.
 
 On Vercel the filesystem is read-only (no SQLite) and database connections use `NullPool`.
+
+## Phase 3: Direct impact analysis
+
+Open an incident and select **Analyze direct impacts** to see the directly linked resource/activity, immediate dependency records, attached constraints, source references, and explicit data limitations. An authenticated JSON view is available at `/api/incidents/<incident_id>/direct-impacts`. This phase deliberately stops at one dependency edge; indirect ripple propagation is a separate phase and no operational status is automatically changed. See `docs/PHASE3_DIRECT_IMPACT_ANALYSIS.md`.
+
+
+## THE RIPPLE crisis dataset (v2.2)
+
+The supplied synthetic dataset is bundled exactly under `data/ripple_dataset/` and includes 19 CSV tables plus `incident.json` and the student glossary/rules. Sign in and open **Ripple dataset** in the navigation to see the complete table inventory, integrity validation, V1/V2/V3 service and activity impact analysis, constraints, staffing summary, repair requests, and parts availability checks. The same report is available at `/api/dataset-analysis?variant=V1` as authenticated JSON; `/dataset-download.zip` downloads the bundled source dataset. This is a read-only dataset integration and does not write synthetic rows into the operational college database.
+
+See `DATASET_INTEGRATION_REPORT.md` for counts, results, and limitations. Impact flags are not a certified revised timetable or repair schedule; all hard constraints and human safety approvals must be checked before action.

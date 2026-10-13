@@ -1,0 +1,12 @@
+{% extends 'base.html' %}
+{% block title %}Direct impacts — {{ incident.incident_code }} — CampusRipple{% endblock %}
+{% block content %}
+<div class="page-heading"><div><span class="eyebrow">PHASE 3 · DIRECT IMPACT ANALYSIS</span><h1>Direct impacts: {{ incident.incident_code }}</h1><p class="muted">{{ incident.title }} · Severity: {{ incident.severity }} · Status: {{ incident.status }}</p></div><a class="button secondary" href="{{ url_for('incident_detail', incident_id=incident.id) }}">← Incident detail</a></div>
+<div class="stats"><div class="stat-card"><span>Directly linked records</span><strong>{{ report.impact_count }}</strong><small>One dependency edge only</small></div><div class="stat-card"><span>Incident severity</span><strong>{{ incident.severity }}</strong><small>As reported; not independently verified</small></div><div class="stat-card"><span>Recovery estimate</span><strong>{{ incident.estimated_duration_minutes|string + ' min' if incident.estimated_duration_minutes else 'Unknown' }}</strong><small>Reporter estimate</small></div></div>
+<section class="panel"><h2>Impact register</h2><p class="muted">Items below are potential exposures inferred from the current Phase 1 records. A model relationship is evidence that records are linked, not proof that service has failed.</p>
+{% if report.impacts %}
+{% for item in report.impacts %}<article class="record-row"><div class="row-between"><div><span class="eyebrow">{{ item.kind|upper }} · {{ item.code }}</span><h3>{{ item.name }}</h3></div><span class="status {{ 'high' if item.severity in ['High','Critical'] else 'draft' }}">{{ item.severity }}</span></div><p><strong>Location:</strong> {{ item.location }}</p><p>{{ item.relationship }}</p><p><strong>Source record:</strong> <code>{{ item.source }}</code></p><p><strong>Suggested verification:</strong> {{ item.mitigation }}</p><small class="muted">{{ item.evidence_status }}</small></article>{% endfor %}
+{% else %}<p>No directly affected campus records could be identified from the current incident links and dependency model. Link the incident to a Phase 1 resource/activity and maintain dependency records to improve coverage.</p>{% endif %}
+</section>
+<section class="panel"><h2>Coverage and limitations</h2><ul>{% for limitation in report.limitations %}<li>{{ limitation }}</li>{% endfor %}</ul><p><strong>Method:</strong> {{ report.method }}</p><p class="muted">Analyzed at {{ report.analyzed_at }}</p><p><a href="{{ url_for('api_incident_direct_impacts', incident_id=incident.id) }}">View JSON analysis</a></p></section>
+{% endblock %}

@@ -463,3 +463,18 @@ class MitigationAction(db.Model):
     scenario = db.relationship('Scenario', backref=db.backref('mitigation_actions', cascade='all, delete-orphan', lazy=True, order_by='MitigationAction.created_at.desc()'))
     impact = db.relationship('Impact')
     created_by = db.relationship('User')
+
+
+class ScenarioOutcomeReview(db.Model):
+    """Phase 9: post-decision outcome review for continuous improvement."""
+    id = db.Column(db.Integer, primary_key=True)
+    scenario_id = db.Column(db.Integer, db.ForeignKey('scenario.id', ondelete='CASCADE'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False, index=True)
+    outcome = db.Column(db.String(20), nullable=False)  # Achieved, Partially achieved, Not achieved, Unknown
+    effectiveness = db.Column(db.Integer, nullable=False)  # 1..5
+    lessons_learned = db.Column(db.String(2000), nullable=False, default='')
+    follow_up = db.Column(db.String(1200), nullable=False, default='')
+    reviewed_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow, index=True)
+    scenario = db.relationship('Scenario', backref=db.backref('outcome_reviews', cascade='all, delete-orphan', lazy=True, order_by='ScenarioOutcomeReview.reviewed_at.desc()'))
+    user = db.relationship('User')
+    __table_args__ = (db.UniqueConstraint('scenario_id', 'user_id', name='uq_scenario_outcome_review_user'),)

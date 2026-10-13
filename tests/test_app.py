@@ -1115,9 +1115,14 @@ def test_department_management_requires_coordinator_or_admin(app, client):
 
 def test_add_decision_appends_csv_and_imports_scenario(client, app, tmp_path):
     register(client)
+    # The endpoint is CSRF protected: obtain the session-bound token from its form.
+    client.get('/decisions/add-and-import')
+    with client.session_transaction() as sess:
+        csrf = sess['_csrf_token']
     csv_path = tmp_path / 'decisions.csv'
     app.config['DECISIONS_CSV_PATH'] = str(csv_path)
     response = client.post('/decisions/add-and-import', data={
+        '_csrf_token': csrf,
         'decision_title': 'Move lab, session',
         'domain': 'Timetable & classrooms',
         'change_variable': 'Time',
@@ -1139,11 +1144,43 @@ def test_add_decision_appends_csv_and_imports_scenario(client, app, tmp_path):
 
 def test_add_decision_rejects_invalid_without_writing_csv(client, app, tmp_path):
     register(client)
+    client.get('/decisions/add-and-import')
+    with client.session_transaction() as sess:
+        csrf = sess['_csrf_token']
     csv_path = tmp_path / 'decisions.csv'
     app.config['DECISIONS_CSV_PATH'] = str(csv_path)
     response = client.post('/decisions/add-and-import', data={
+        '_csrf_token': csrf,
         'decision_title': '', 'domain': 'General', 'change_variable': 'Time',
         'current_value': '10:00', 'proposed_value': '12:00', 'context': '',
     })
     assert response.status_code == 400
     assert not csv_path.exists()
+
+
+def test_phase8_liveness_and_readiness_probes_are_secret_safe(client):
+    live = client.get('/livez')
+    assert live.status_code == 200
+    assert live.get_json() == {'status': 'alive'}
+    ready = client.get('/health/ready')
+    assert ready.status_code in (200, 503)
+    payload = ready.get_json()
+    assert payload['status'] in ('ready', 'not_ready')
+    assert 'checks' in payload
+    assert 'DATABASE_URL' not in ready.get_data(as_text=True)
+
+
+def test_phase8_system_readiness_is_admin_only(app, client):
+    register(client)
+    denied = client.get('/admin/system-readiness')
+    assert denied.status_code == 403
+    with app.app_context():
+        user = User.query.filter_by(email='student@aceec.ac.in').first()
+        user.role = 'admin'
+        db.session.commit()
+        user_id = user.id
+    _set_authenticated_user(client, user_id)
+    allowed = client.get('/admin/system-readiness')
+    assert allowed.status_code == 200
+    assert b'System readiness' in allowed.data
+    assert b'Recovery checklist' in allowed.data

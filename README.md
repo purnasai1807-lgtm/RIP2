@@ -443,3 +443,19 @@ Phase 6 adds a scenario evidence register with source references, verification s
 ### Add Decision → append CSV → automatic import
 
 Authenticated users can use **Add Decision** in the navigation. The form submits to `/decisions/add-and-import`; the server validates the same fields and limits as normal decision creation, appends a correctly quoted UTF-8 CSV row to `instance/decisions.csv` (or `DECISIONS_CSV_PATH` when configured), and creates the matching database scenario using the application's existing `Scenario` model. Writes use a sibling temporary file plus `os.replace`, and an in-process lock prevents concurrent requests from overwriting each other. Exact duplicate rows are rejected/idempotently redirected, and a failed database import attempts to restore the previous CSV bytes. Back up this canonical CSV in production and use a shared storage/database lock if running multiple application workers or hosts.
+
+## Phase 8: Operational readiness and recovery
+
+See [`docs/PHASE8_OPERATIONAL_READINESS.md`](docs/PHASE8_OPERATIONAL_READINESS.md) for the liveness/readiness probes, admin-only system diagnostics, configuration checks, and recovery checklist. The admin console is available at `/admin/system-readiness` after signing in as an administrator.
+
+## Phase 9 — Outcome review and continuous improvement
+
+Scenario owners can record the observed outcome after a decision is carried out, rate effectiveness (1–5), document lessons learned, and capture follow-up actions from the scenario detail page. Reviews are upserted per scenario and reviewer, audited, and constrained by a database uniqueness rule to avoid duplicate reviews. This is a human feedback loop; it does not automatically alter live college systems or claim model accuracy.
+
+Apply the Phase 9 schema with `flask --app wsgi:app db upgrade`. Run `python -m pytest -q` after installing `requirements.txt`. The Phase 9 route is `POST /scenarios/<scenario_id>/outcome-review` and requires login, scenario ownership, and the app's normal CSRF token.
+
+## Activity priority CSV scoring
+
+Authenticated users can open **Activity priority** in the top navigation or visit `/activity-priority` to upload the campus `activities.csv` format. The CSV must contain `activity_id`, `activity_name`, `priority`, and `priority_weight`; all other activity columns are accepted and preserved in the saved upload. Files must be UTF-8 CSV, at most 1 MB and 2,000 rows, with unique activity IDs and `priority` values of `critical`, `high`, `medium`, or `low`.
+
+Each activity receives a transparent 0–100 relative score: 60% comes from the declared priority tier (critical 100, high 75, medium 50, low 25), and 40% from `priority_weight` normalized against the maximum weight in that upload. Scores of 70–100 display **High**, 40–69 **Medium**, and below 40 **Low**. The most recent valid source CSV is atomically stored at `instance/activity_priority_latest.csv`; invalid uploads do not replace it. This is a relative prioritization aid, not a probability of harm or an automated operational decision.

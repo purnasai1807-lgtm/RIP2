@@ -21,7 +21,7 @@ from werkzeug.exceptions import HTTPException
 from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError
 from . import db
-from .models import User, Scenario, Impact, Department, Course, Room, TimetableEntry, AuditEvent, ExamSchedule, CampusEvent, AcademicCalendarItem, MaintenanceRequest, AttendanceSession, AttendanceRecord, InventoryItem, Announcement, ServiceRequest, FacultySubstitution, InvigilatorAssignment, InAppNotification, LoginAttempt, IntegrationSyncRun, ImpactFeedback, ScenarioEvidence, CampusActivity, CampusResource, ActivityDependency, ResourceConstraint, CampusIncident, IncidentUpdate, MitigationAction, utcnow
+from .models import User, Scenario, Impact, Department, Course, Room, TimetableEntry, AuditEvent, ExamSchedule, CampusEvent, AcademicCalendarItem, MaintenanceRequest, AttendanceSession, AttendanceRecord, InventoryItem, Announcement, ServiceRequest, FacultySubstitution, InvigilatorAssignment, InAppNotification, LoginAttempt, IntegrationSyncRun, ImpactFeedback, ScenarioEvidence, CampusActivity, CampusResource, ActivityDependency, ResourceConstraint, CampusIncident, IncidentUpdate, MitigationAction, ScenarioOutcomeReview, utcnow
 from .engine import analyze, RULE_VERSION
 from .direct_impact import analyze_direct_impacts
 from .ripple_impact import analyze_ripple_impacts
@@ -284,6 +284,88 @@ def register_routes(app):
     app.jinja_env.globals['csrf_token'] = csrf_token
     app.jinja_env.globals['domains'] = DOMAINS
     app.jinja_env.globals['variables'] = VARIABLES
+
+    @app.route('/activity-priority', methods=['GET', 'POST'])
+    @login_required
+    def activity_priority():
+        """Upload an activities-schema CSV and score each row by priority_weight."""
+        scored_rows = []
+        summary = None
+        errors = []
+        expected = {'activity_id', 'activity_name', 'priority', 'priority_weight'}
+        if request.method == 'POST':
+            upload = request.files.get('file')
+            if not upload or not upload.filename or not upload.filename.lower().endswith('.csv'):
+                errors.append('Choose an activities CSV file (.csv).')
+            else:
+                raw = upload.stream.read(1024 * 1024 + 1)
+                if len(raw) > 1024 * 1024:
+                    errors.append('CSV must be 1 MB or smaller.')
+                else:
+                    try:
+                        text_data = raw.decode('utf-8-sig', errors='strict')
+                        reader = csv.DictReader(io.StringIO(text_data, newline=''), strict=True)
+                        headers = reader.fieldnames or []
+                        missing = sorted(expected - set(headers))
+                        if missing:
+                            errors.append('Missing required columns: ' + ', '.join(missing))
+                        elif len(headers) != len(set(headers)):
+                            errors.append('CSV contains duplicate column names. Please fix the header row.')
+                        else:
+                            raw_rows = list(reader)
+                            if not raw_rows:
+                                errors.append('The CSV contains a header but no activity rows.')
+                            elif len(raw_rows) > 2000:
+                                errors.append('CSV must contain no more than 2,000 activity rows.')
+                            else:
+                                validated = []
+                                seen_ids = set()
+                                for line_no, row in enumerate(raw_rows, start=2):
+                                    activity_id = (row.get('activity_id') or '').strip()
+                                    activity_name = (row.get('activity_name') or '').strip()
+                                    priority = (row.get('priority') or '').strip().lower()
+                                    weight_text = (row.get('priority_weight') or '').strip()
+                                    if not activity_id or not activity_name:
+                                        errors.append(f'Row {line_no}: activity_id and activity_name are required.')
+                                        continue
+                                    if activity_id in seen_ids:
+                                        errors.append(f'Row {line_no}: duplicate activity_id {activity_id!r}.')
+                                        continue
+                                    seen_ids.add(activity_id)
+                                    if priority not in {'critical', 'high', 'medium', 'low'}:
+                                        errors.append(f'Row {line_no}: priority must be critical, high, medium, or low.')
+                                        continue
+                                    try:
+                                        weight = float(weight_text)
+                                        if weight < 0 or not __import__('math').isfinite(weight):
+                                            raise ValueError
+                                    except (TypeError, ValueError):
+                                        errors.append(f'Row {line_no}: priority_weight must be a non-negative number.')
+                                        continue
+                                    validated.append((row, priority, weight))
+                                if not errors:
+                                    from .priority_scoring import score_activities
+                                    scored_rows, summary = score_activities([
+                                        {**row, 'priority': priority, 'priority_weight': weight}
+                                        for row, priority, weight in validated
+                                    ])
+                                    # Keep the latest valid upload for reproducibility; use atomic replacement.
+                                    target = Path(app.instance_path) / 'activity_priority_latest.csv'
+                                    target.parent.mkdir(parents=True, exist_ok=True)
+                                    fd, tmp = tempfile.mkstemp(prefix='.activity-priority-', suffix='.csv.tmp', dir=str(target.parent))
+                                    try:
+                                        with os.fdopen(fd, 'wb') as handle:
+                                            handle.write(raw); handle.flush(); os.fsync(handle.fileno())
+                                        os.replace(tmp, target)
+                                    finally:
+                                        if os.path.exists(tmp):
+                                            os.unlink(tmp)
+                    except (UnicodeDecodeError, csv.Error) as exc:
+                        errors.append('Could not parse this CSV. Save it as UTF-8 CSV and check quoting and row formatting.')
+                    except OSError:
+                        app.logger.exception('Could not save activity priority CSV')
+                        errors.append('The CSV was scored but could not be saved due to a file permission or storage error. Please retry.')
+        return render_template('activity_priority.html', rows=scored_rows, summary=summary, errors=errors)
 
     @app.get('/dataset-analysis')
     @login_required
@@ -2076,8 +2158,7 @@ def register_routes(app):
 
     @app.route('/forgot-password', methods=['GET', 'POST'])
     def forgot_password():
-        if current_user.is_authenticated:
-            return redirect(url_for('dashboard'))
+        # Authenticated users may still request a reset; the response remains generic.
         if request.method == 'POST':
             email = request.form.get('email', '').strip().lower()
             # Always show the same message to avoid disclosing registered accounts.
@@ -2240,6 +2321,40 @@ def register_routes(app):
         if not scenario or (scenario.user_id != current_user.id and current_user.role not in ('coordinator', 'admin')):
             abort(404)
         return render_template('scenario_detail.html', scenario=scenario)
+
+    @app.post('/scenarios/<int:scenario_id>/outcome-review')
+    @login_required
+    def submit_scenario_outcome_review(scenario_id):
+        """Record observed results after a decision and feed a transparent learning loop."""
+        scenario = owned_scenario(scenario_id)
+        outcome = (request.form.get('outcome') or '').strip()
+        allowed_outcomes = {'Achieved', 'Partially achieved', 'Not achieved', 'Unknown'}
+        try:
+            effectiveness = int(request.form.get('effectiveness', ''))
+        except (TypeError, ValueError):
+            effectiveness = 0
+        lessons = (request.form.get('lessons_learned') or '').strip()
+        follow_up = (request.form.get('follow_up') or '').strip()
+        if outcome not in allowed_outcomes:
+            flash('Choose a valid observed outcome.', 'error')
+        elif effectiveness not in range(1, 6):
+            flash('Effectiveness must be rated from 1 to 5.', 'error')
+        elif len(lessons) > 2000 or len(follow_up) > 1200:
+            flash('Review notes exceed the allowed length.', 'error')
+        else:
+            review = ScenarioOutcomeReview.query.filter_by(scenario_id=scenario.id, user_id=current_user.id).first()
+            if review is None:
+                review = ScenarioOutcomeReview(scenario_id=scenario.id, user_id=current_user.id)
+                db.session.add(review)
+            review.outcome = outcome
+            review.effectiveness = effectiveness
+            review.lessons_learned = lessons
+            review.follow_up = follow_up
+            record_audit('scenario.outcome_reviewed', 'Scenario', scenario.id,
+                         f'outcome={outcome}; effectiveness={effectiveness}/5')
+            db.session.commit()
+            flash('Outcome review saved. It is available in the decision record for future learning.', 'success')
+        return redirect(url_for('scenario_detail', scenario_id=scenario.id) + '#phase9-outcome')
 
     @app.post('/scenarios/<int:scenario_id>/actions')
     @login_required
@@ -2671,6 +2786,71 @@ def register_routes(app):
         response.headers['Content-Disposition'] = f'attachment; filename="decision-{scenario.id}-impact-report.json"'
         response.headers['X-Content-Type-Options'] = 'nosniff'
         return response
+
+    @app.get('/health/ready')
+    def readiness_probe():
+        """Dependency-aware readiness probe; deliberately exposes no secrets."""
+        checks = {'database': False, 'dataset': False}
+        try:
+            db.session.execute(text('SELECT 1'))
+            checks['database'] = True
+        except Exception:
+            db.session.rollback()
+        try:
+            from .dataset_engine import DATA_DIR, TABLES
+            root = Path(DATA_DIR)
+            checks['dataset'] = root.is_dir() and all((root / f'{table}.csv').is_file() for table in TABLES)
+        except Exception:
+            checks['dataset'] = False
+        healthy = all(checks.values())
+        response = make_response({'status': 'ready' if healthy else 'not_ready', 'checks': checks}, 200 if healthy else 503)
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+
+    @app.get('/admin/system-readiness')
+    @login_required
+    def admin_system_readiness():
+        """Phase 8 operations console for safe diagnostics and recovery guidance."""
+        require_roles('admin')
+        checks = []
+        def add_check(name, ok, detail, severity='critical'):
+            checks.append({'name': name, 'ok': bool(ok), 'detail': detail, 'severity': severity})
+        try:
+            db.session.execute(text('SELECT 1'))
+            add_check('Database connectivity', True, 'A simple database query succeeded.')
+        except Exception:
+            db.session.rollback()
+            add_check('Database connectivity', False, 'Database query failed. Check DATABASE_URL, network access, and database availability.')
+        try:
+            from .dataset_engine import DATA_DIR, TABLES, validate_dataset
+            root = Path(DATA_DIR)
+            missing = [f'{table}.csv' for table in TABLES if not (root / f'{table}.csv').is_file()]
+            validation = validate_dataset()
+            valid = not missing and not validation.get('errors')
+            detail = 'All expected CSV files are present and dataset validation reported no errors.' if valid else ('Missing files: ' + ', '.join(missing) if missing else f"Dataset validation reported {len(validation.get('errors', []))} error(s).")
+            add_check('Ripple dataset', valid, detail)
+        except Exception:
+            add_check('Ripple dataset', False, 'Dataset inspection failed. Check the bundled data directory and dataset validator.')
+        csv_path = Path(app.config.get('DECISIONS_CSV_PATH') or (Path(app.instance_path) / 'decisions.csv'))
+        if csv_path.exists():
+            try:
+                with csv_path.open('r', encoding='utf-8-sig', newline='') as stream:
+                    reader = csv.reader(stream)
+                    header = next(reader, None)
+                valid_csv = header == ['title', 'domain', 'change_variable', 'current_value', 'proposed_value', 'context']
+                add_check('Decision CSV', valid_csv, 'CSV headers match the application schema.' if valid_csv else 'CSV headers do not match the required schema; back up the file before repair.')
+            except (OSError, UnicodeError, csv.Error):
+                add_check('Decision CSV', False, 'CSV could not be read. Check encoding, formatting, and file permissions.')
+        else:
+            add_check('Decision CSV', True, 'No canonical decision CSV exists yet; it will be created on first submission.', 'warning')
+        mail_ready = bool(app.config.get('MAIL_SERVER') and app.config.get('MAIL_DEFAULT_SENDER'))
+        add_check('Email delivery configuration', mail_ready, 'SMTP server and sender are configured.' if mail_ready else 'Password reset and verification emails require MAIL_SERVER and MAIL_DEFAULT_SENDER.', 'warning')
+        production = app.config.get('APP_ENV') == 'production'
+        secure = bool(app.config.get('SESSION_COOKIE_SECURE'))
+        add_check('Secure session cookie', (secure if production else True), 'Secure cookies are enabled.' if secure else 'Enable COOKIE_SECURE=true when serving over HTTPS.' , 'critical' if production else 'warning')
+        return render_template('system_readiness.html', checks=checks,
+                               passed=sum(1 for check in checks if check['ok']),
+                               failed=sum(1 for check in checks if not check['ok']))
 
     @app.errorhandler(400)
     def bad_request(error):

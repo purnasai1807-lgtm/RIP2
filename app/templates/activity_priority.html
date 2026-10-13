@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block title %}Activity Priority Scoring — CampusRipple{% endblock %}
+{% block content %}
+<div class="page-heading"><div><span class="eyebrow">CSV ANALYSIS</span><h1>Activity priority scoring</h1><p class="muted">Upload an activities CSV to calculate a 0–100 score and classify each activity as High, Medium, or Low priority.</p></div></div>
+<section class="panel" style="max-width:900px;margin:0 auto 24px">
+  <h2>Upload activities.csv</h2>
+  <p class="muted">Supports the campus activities dataset format. Required columns: <code>activity_id</code>, <code>activity_name</code>, <code>priority</code>, and <code>priority_weight</code>. Other columns are retained in the saved upload but are not needed for scoring.</p>
+  <form method="post" enctype="multipart/form-data">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <label for="file">Activities CSV file</label><input id="file" name="file" type="file" accept=".csv,text/csv" required>
+    <small class="hint">UTF-8 CSV, maximum 1 MB and 2,000 activity rows. Existing application data is not overwritten.</small>
+    <button class="button primary" type="submit">Upload and calculate scores</button>
+  </form>
+</section>
+{% if errors %}<section class="panel" role="alert"><h2>Could not score this file</h2><ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul></section>{% endif %}
+{% if summary %}
+<section class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:20px">
+  <div class="panel"><span class="muted">Activities scored</span><h2>{{ summary.total }}</h2></div>
+  <div class="panel"><span class="muted">High priority</span><h2>{{ summary.high }}</h2></div>
+  <div class="panel"><span class="muted">Medium priority</span><h2>{{ summary.medium }}</h2></div>
+  <div class="panel"><span class="muted">Low priority</span><h2>{{ summary.low }}</h2></div>
+</section>
+<section class="panel"><h2>Scored activities</h2><p class="muted">Score blends the declared priority (60%) with the row's priority_weight normalized against the highest weight in this upload (40%). High ≥ 70, Medium ≥ 40, Low &lt; 40. This is a relative decision-support score, not a prediction of real-world risk.</p>
+<div style="overflow-x:auto"><table><thead><tr><th>ID</th><th>Activity</th><th>Input priority</th><th>Weight</th><th>Score / 100</th><th>Classification</th></tr></thead><tbody>
+{% for row in rows %}<tr><td>{{ row.activity_id }}</td><td>{{ row.activity_name }}</td><td>{{ row.priority }}</td><td>{{ row.priority_weight }}</td><td><strong>{{ row.score }}</strong></td><td><span class="priority-badge priority-{{ row.level|lower }}">{{ row.level }}</span></td></tr>{% endfor %}
+</tbody></table></div></section>
+{% endif %}
+{% endblock %}

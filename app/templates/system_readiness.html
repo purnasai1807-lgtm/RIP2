@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block title %}System readiness · CampusRipple{% endblock %}
+{% block content %}
+<section class="page-header">
+  <p class="eyebrow">Phase 8 · Operations & recovery</p>
+  <h1>System readiness</h1>
+  <p>Review service health, dataset integrity, decision CSV schema, and deployment configuration. These checks diagnose configuration; they do not replace backups or a recovery drill.</p>
+</section>
+<section class="stats-grid">
+  <article class="stat-card"><span>Checks passed</span><strong>{{ passed }}</strong></article>
+  <article class="stat-card"><span>Checks needing attention</span><strong>{{ failed }}</strong></article>
+</section>
+<section class="panel">
+  <h2>Readiness checks</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Check</th><th>Status</th><th>Details</th></tr></thead>
+    <tbody>{% for check in checks %}
+      <tr><td>{{ check.name }}</td><td>{% if check.ok %}<span class="status status-success">OK</span>{% else %}<span class="status status-danger">Needs attention</span>{% endif %}</td><td>{{ check.detail }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+</section>
+<section class="panel">
+  <h2>Recovery checklist</h2>
+  <ol>
+    <li>Take a fresh database backup and verify its SHA-256 sidecar.</li>
+    <li>Restore only into a disposable database whose identity differs from the source.</li>
+    <li>Apply database migrations and run <code>python -m pytest -q</code>.</li>
+    <li>Verify login, incident reporting, analysis, evidence, mitigation tasks, and Add Decision import in a staging environment.</li>
+    <li>Record the operator, time, result, and any follow-up actions in the audit process.</li>
+  </ol>
+</section>
+{% endblock %}

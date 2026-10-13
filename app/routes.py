@@ -21,7 +21,7 @@ from werkzeug.exceptions import HTTPException
 from sqlalchemy import func, or_, text
 from sqlalchemy.exc import IntegrityError
 from . import db
-from .models import User, Scenario, Impact, Department, Course, Room, TimetableEntry, AuditEvent, ExamSchedule, CampusEvent, AcademicCalendarItem, MaintenanceRequest, AttendanceSession, AttendanceRecord, InventoryItem, Announcement, ServiceRequest, FacultySubstitution, InvigilatorAssignment, InAppNotification, LoginAttempt, IntegrationSyncRun, ImpactFeedback, ScenarioEvidence, CampusActivity, CampusResource, ActivityDependency, ResourceConstraint, CampusIncident, IncidentUpdate, MitigationAction
+from .models import User, Scenario, Impact, Department, Course, Room, TimetableEntry, AuditEvent, ExamSchedule, CampusEvent, AcademicCalendarItem, MaintenanceRequest, AttendanceSession, AttendanceRecord, InventoryItem, Announcement, ServiceRequest, FacultySubstitution, InvigilatorAssignment, InAppNotification, LoginAttempt, IntegrationSyncRun, ImpactFeedback, ScenarioEvidence, CampusActivity, CampusResource, ActivityDependency, ResourceConstraint, CampusIncident, IncidentUpdate, MitigationAction, utcnow
 from .engine import analyze, RULE_VERSION
 from .direct_impact import analyze_direct_impacts
 from .ripple_impact import analyze_ripple_impacts

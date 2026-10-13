@@ -1111,3 +1111,39 @@ def test_department_management_requires_coordinator_or_admin(app, client):
             assert response.status_code == 403, f'{role} must not manage departments'
     with app.app_context():
         assert Department.query.count() == 0, 'invalid test payload must not create a department'
+
+
+def test_add_decision_appends_csv_and_imports_scenario(client, app, tmp_path):
+    register(client)
+    csv_path = tmp_path / 'decisions.csv'
+    app.config['DECISIONS_CSV_PATH'] = str(csv_path)
+    response = client.post('/decisions/add-and-import', data={
+        'decision_title': 'Move lab, session',
+        'domain': 'Timetable & classrooms',
+        'change_variable': 'Time',
+        'current_value': '10:00',
+        'proposed_value': '12:00',
+        'context': 'Faculty said "move it"; verify room',
+    }, follow_redirects=False)
+    assert response.status_code == 302
+    import csv as csv_module
+    with csv_path.open(encoding='utf-8', newline='') as stream:
+        rows = list(csv_module.DictReader(stream))
+    assert len(rows) == 1
+    assert rows[0]['title'] == 'Move lab, session'
+    assert rows[0]['context'] == 'Faculty said "move it"; verify room'
+    with app.app_context():
+        from app.models import Scenario
+        assert Scenario.query.filter_by(title='Move lab, session').count() == 1
+
+
+def test_add_decision_rejects_invalid_without_writing_csv(client, app, tmp_path):
+    register(client)
+    csv_path = tmp_path / 'decisions.csv'
+    app.config['DECISIONS_CSV_PATH'] = str(csv_path)
+    response = client.post('/decisions/add-and-import', data={
+        'decision_title': '', 'domain': 'General', 'change_variable': 'Time',
+        'current_value': '10:00', 'proposed_value': '12:00', 'context': '',
+    })
+    assert response.status_code == 400
+    assert not csv_path.exists()

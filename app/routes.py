@@ -6,6 +6,10 @@ import secrets
 import hashlib
 import hmac
 import time
+import threading
+import os
+import tempfile
+from pathlib import Path
 import smtplib
 import ssl
 from datetime import datetime, timedelta, timezone
@@ -1125,6 +1129,111 @@ def register_routes(app):
         if not scenario or (scenario.user_id != current_user.id and current_user.role not in ('coordinator', 'admin')):
             abort(404)
         return serialize_scenario(scenario, include_impacts=True), 200
+
+    @app.route('/decisions/add-and-import', methods=['GET', 'POST'])
+    @login_required
+    def add_decision_and_import_csv():
+        """Append a validated decision to the canonical CSV and import it atomically."""
+        if request.method == 'GET':
+            return render_template('scenario_form.html', scenario=None, append_to_csv=True)
+        payload = {
+            'title': request.form.get('decision_title', request.form.get('title', '')),
+            'domain': request.form.get('domain', ''),
+            'change_variable': request.form.get('change_variable', ''),
+            'current_value': request.form.get('current_value', ''),
+            'proposed_value': request.form.get('proposed_value', ''),
+            'context': request.form.get('context', ''),
+        }
+        data, error = scenario_form_data(payload)
+        if error:
+            flash(error, 'error')
+            return render_template('scenario_form.html', scenario=None, append_to_csv=True), 400
+
+        # The lock prevents lost updates between simultaneous requests in this process.
+        lock = app.extensions.setdefault('decision_csv_lock', threading.RLock())
+        csv_path = Path(app.config.get('DECISIONS_CSV_PATH') or (Path(app.instance_path) / 'decisions.csv'))
+        headers = ['title', 'domain', 'change_variable', 'current_value', 'proposed_value', 'context']
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock:
+            original = csv_path.read_bytes() if csv_path.exists() else None
+            try:
+                existing_rows = []
+                if original:
+                    try:
+                        reader = csv.DictReader(io.StringIO(original.decode('utf-8-sig', errors='strict'), newline=''))
+                        if reader.fieldnames != headers:
+                            raise ValueError('The decisions CSV has unexpected headers. Back it up and repair its schema before retrying.')
+                        existing_rows = list(reader)
+                    except (UnicodeDecodeError, csv.Error) as exc:
+                        raise ValueError('The decisions CSV is malformed or is not UTF-8 encoded.') from exc
+                # Retry-safe idempotency: an exact duplicate row is not appended again.
+                if any(all((row.get(k) or '') == str(data[k]) for k in headers) for row in existing_rows):
+                    existing = Scenario.query.filter_by(user_id=current_user.id, title=data['title'], domain=data['domain'],
+                        change_variable=data['change_variable'], current_value=data['current_value'],
+                        proposed_value=data['proposed_value'], context=data['context']).first()
+                    if existing:
+                        flash('This decision already exists; no duplicate CSV row was added.', 'success')
+                        return redirect(url_for('scenario_detail', scenario_id=existing.id))
+                    raise ValueError('This decision row is already in the CSV. Import it from the existing CSV rather than adding a duplicate.')
+                output = io.StringIO(newline='')
+                writer = csv.writer(output, lineterminator='\n')
+                if not original:
+                    writer.writerow(headers)
+                writer.writerow([data[k] for k in headers])
+                encoded = output.getvalue().encode('utf-8')
+                # Write the complete new file to a temporary sibling, then atomically replace.
+                previous_text = original.decode('utf-8-sig') if original else ''
+                prefix = previous_text
+                if prefix and not prefix.endswith(('\n', '\r')):
+                    prefix += '\n'
+                complete = (prefix.encode('utf-8') + encoded) if original else encoded
+                fd, temp_name = tempfile.mkstemp(prefix='.decisions-', suffix='.csv.tmp', dir=str(csv_path.parent))
+                try:
+                    with os.fdopen(fd, 'wb') as temp_file:
+                        temp_file.write(complete)
+                        temp_file.flush()
+                        os.fsync(temp_file.fileno())
+                    os.replace(temp_name, csv_path)
+                finally:
+                    if os.path.exists(temp_name):
+                        os.unlink(temp_name)
+
+                # Reuse the same validated payload/schema as the CSV import endpoint.
+                scenario = Scenario(user_id=current_user.id, **data)
+                db.session.add(scenario)
+                db.session.flush()
+                record_audit('scenario.csv_appended_and_imported', 'Scenario', scenario.id,
+                             details=f'Canonical CSV updated: {csv_path.name}')
+                db.session.commit()
+                flash('Decision saved to CSV and imported successfully. You can now analyze its impacts.', 'success')
+                return redirect(url_for('scenario_detail', scenario_id=scenario.id))
+            except ValueError as exc:
+                db.session.rollback()
+                flash(str(exc), 'error')
+                return render_template('scenario_form.html', scenario=None, append_to_csv=True), 400
+            except (OSError, PermissionError, csv.Error, UnicodeError) as exc:
+                db.session.rollback()
+                app.logger.exception('Decision CSV update failed')
+                flash('Could not update the decisions CSV. Check file permissions and encoding, then retry.', 'error')
+                return render_template('scenario_form.html', scenario=None, append_to_csv=True), 500
+            except Exception:
+                db.session.rollback()
+                # If DB import fails, restore the original CSV to keep both stores consistent.
+                try:
+                    if original is None:
+                        csv_path.unlink(missing_ok=True)
+                    else:
+                        restore_fd, restore_name = tempfile.mkstemp(prefix='.decisions-restore-', dir=str(csv_path.parent))
+                        with os.fdopen(restore_fd, 'wb') as restore_file:
+                            restore_file.write(original)
+                            restore_file.flush()
+                            os.fsync(restore_file.fileno())
+                        os.replace(restore_name, csv_path)
+                except OSError:
+                    app.logger.exception('CSV rollback failed; manual recovery is required for %s', csv_path)
+                app.logger.exception('Decision CSV import failed')
+                flash('The decision could not be imported. The CSV was restored where possible; retry safely.', 'error')
+                return render_template('scenario_form.html', scenario=None, append_to_csv=True), 500
 
     @app.route('/imports', methods=['GET', 'POST'])
     @login_required

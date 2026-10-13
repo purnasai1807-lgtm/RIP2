@@ -439,3 +439,7 @@ New analyses preserve a canonical input/evidence snapshot and fingerprints for r
 ## Phase 6: Uncertainty and evidence
 
 Phase 6 adds a scenario evidence register with source references, verification status, confidence, observation time, expiry, and notes. Unverified, disputed, stale, expired, and low-confidence records are surfaced as uncertainty impacts with validation recommendations. The evidence sensitivity action compares a hypothetical status without mutating saved evidence. See `docs/PHASE6_UNCERTAINTY_EVIDENCE.md` and apply the latest migration before use.
+
+### Add Decision → append CSV → automatic import
+
+Authenticated users can use **Add Decision** in the navigation. The form submits to `/decisions/add-and-import`; the server validates the same fields and limits as normal decision creation, appends a correctly quoted UTF-8 CSV row to `instance/decisions.csv` (or `DECISIONS_CSV_PATH` when configured), and creates the matching database scenario using the application's existing `Scenario` model. Writes use a sibling temporary file plus `os.replace`, and an in-process lock prevents concurrent requests from overwriting each other. Exact duplicate rows are rejected/idempotently redirected, and a failed database import attempts to restore the previous CSV bytes. Back up this canonical CSV in production and use a shared storage/database lock if running multiple application workers or hosts.

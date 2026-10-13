@@ -1,3 +1,7 @@
+# THE RIPPLE — ripple111
+
+This project folder is named `ripple111`. It contains the campus-crisis impact analysis application, dataset upload/validation workflow, and the project modules documented below.
+
 # CampusRipple — College Decision Impact Analysis System
 
 A full-stack web application tailored to college operations: timetable and classrooms, exams and academics, campus facilities, events and clubs, transport and attendance, and budget/procurement. It traces potential direct and downstream impacts and exports an impact report. Built with Flask, SQLAlchemy, PostgreSQL, HTML, CSS, and vanilla JavaScript.
@@ -463,3 +467,16 @@ Each activity receives a transparent 0–100 relative score: 60% comes from the 
 ### Activity priority CSV scoring
 
 Authenticated users can open **Activity priority**, upload the campus `activities.csv` schema, view a 0–100 score and High/Medium/Low classification for every activity, and download a scored CSV. Required columns and the scoring formula are documented in `docs/ACTIVITY_PRIORITY_CSV.md`; a copy of the supplied example is in `data/samples/activities_priority_example.csv`.
+
+## Import the complete THE RIPPLE dataset
+
+1. Start the application and sign in.
+2. Open **Campus crisis dataset** (`/dataset-analysis`).
+3. Upload the supplied `The_Ripple_Dataset.zip` package using **Import the complete dataset**. The ZIP must contain all 19 required CSV tables and `incident.json`; it may contain a parent directory.
+4. The server checks that all required files exist, validates CSV/JSON encoding and cross-table IDs, and validates the dependency/resource references before activation.
+5. A successful import is activated as one dataset version and used by V1, V2, and V3. A failed import does not replace the currently active dataset.
+6. To update only the activity table later, use **Activity Priority** and upload a full-schema `activities.csv`. That update retains the currently active rooms, services, staff, dependencies, constraints, and incident definition.
+7. Use **Reset to bundled baseline dataset** only when you deliberately want to discard the active import.
+
+The dataset is synthetic teaching data. Its analysis is reproducible against the supplied records, but it is not a claim about live campus conditions. Dependency-based impact flags are not a substitute for operational verification or a certified revised timetable.
+

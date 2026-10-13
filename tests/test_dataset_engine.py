@@ -61,3 +61,22 @@ def test_dataset_report_variants_and_policy():
     assert v3["analysis"]["summary"]["initially_affected_services"] == 4
     assert v1["policy_summary"]["cancellation_allowed_activities"] == 10
     assert v1["policy_summary"]["cancellable_critical_or_mandatory_violations"] == []
+
+def test_uploaded_activity_table_validates_and_drives_all_scenarios(tmp_path):
+    """A full activities.csv upload can replace the activity table without losing other campus tables."""
+    import shutil
+    for table in engine.TABLES:
+        shutil.copy2(engine.DATA_DIR / f"{table}.csv", tmp_path / f"{table}.csv")
+    shutil.copy2(engine.DATA_DIR / "incident.json", tmp_path / "incident.json")
+    # This file is the full-schema example used by the application's upload workflow.
+    shutil.copy2(engine.DATA_DIR / "activities.csv", tmp_path / "activities.csv")
+
+    dataset = engine.load_dataset(tmp_path)
+    validation = engine.validate_dataset(dataset)
+    assert validation["valid"], validation["errors"]
+    assert len(dataset["tables"]["activities"]) == 35
+    for variant in ("V1", "V2", "V3"):
+        report = engine.dataset_report(variant, tmp_path)
+        assert report["ok"], report.get("error")
+        assert report["dataset"]["row_counts"]["activities"] == 35
+        assert report["analysis"]["summary"]["activities_total"] == 35

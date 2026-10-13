@@ -8,11 +8,12 @@
   <form method="post" enctype="multipart/form-data">
     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
     <label for="file">Activities CSV file</label><input id="file" name="file" type="file" accept=".csv,text/csv" required>
-    <small class="hint">UTF-8 CSV, maximum 1 MB and 2,000 activity rows. Existing application data is not overwritten.</small>
+    <small class="hint">UTF-8 CSV, maximum 1 MB and 2,000 activity rows. If the uploaded table passes full cross-table validation, it becomes the activity table used by ripple analysis; the bundled rooms, services, staff and incident tables remain in place.</small>
     <button class="button primary" type="submit">Upload and calculate scores</button>
   </form>
 </section>
 {% if errors %}<section class="panel" role="alert"><h2>Could not score this file</h2><ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul></section>{% endif %}
+{% if integration_messages %}<section class="panel" aria-live="polite"><h2>Ripple dataset integration</h2><ul>{% for message in integration_messages %}<li>{{ message }}</li>{% endfor %}</ul><p><a class="button primary" href="{{ url_for('dataset_analysis') }}">Open full ripple analysis</a></p></section>{% endif %}
 {% if summary %}
 <section class="grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:20px">
   <div class="panel"><span class="muted">Activities scored</span><h2>{{ summary.total }}</h2></div>

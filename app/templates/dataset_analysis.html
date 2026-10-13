@@ -4,7 +4,19 @@
 <section class="hero compact">
   <p class="eyebrow">THE RIPPLE · COMPLETE DATASET IMPORT & ANALYSIS</p>
   <h1>Campus crisis dataset</h1>
-  <p>Every CSV table and the incident JSON from the supplied dataset are loaded from the project bundle. Choose a scenario variant to inspect dependency-driven service and activity impacts.</p>
+  <p>Upload the complete THE RIPPLE dataset ZIP here to validate and activate all campus tables together. You can also upload an activities.csv from Activity Priority to update only the activity table while preserving the other active campus records. Choose a scenario variant to inspect dependency-driven service and activity impacts.</p>
+</section>
+
+<section class="panel">
+  <h2>Import the complete dataset</h2>
+  <p class="muted">Upload the ZIP containing all 19 CSV tables, incident.json, and optionally the dataset manifest and student documentation. The app validates cross-table references before replacing the active dataset; a failed import leaves the previous dataset unchanged.</p>
+  <form method="post" action="{{ url_for('dataset_upload') }}" enctype="multipart/form-data" class="form-grid">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+    <label>THE RIPPLE dataset ZIP
+      <input type="file" name="dataset_file" accept=".zip,application/zip" required>
+    </label>
+    <button type="submit">Validate and activate full dataset</button>
+  </form>
 </section>
 
 <section class="panel">
@@ -12,6 +24,15 @@
     <div><h2>Dataset status</h2><p class="muted">{{ report.dataset.name }} · version {{ report.dataset.version }}</p></div>
     <span class="pill">{% if validation.valid %}Validation passed{% else %}Validation errors{% endif %}</span>
   </div>
+  {% if uploaded_dataset %}
+    <div class="flash success"><strong>Uploaded dataset is active.</strong> Ripple results use the validated active dataset. It may be the full uploaded package or an uploaded activities.csv combined with the remaining active campus tables.</div>
+    <form method="post" action="{{ url_for('dataset_reset') }}" style="margin-bottom:16px">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="button secondary">Reset to bundled baseline dataset</button>
+    </form>
+  {% else %}
+    <p class="muted">Using the bundled baseline dataset.</p>
+  {% endif %}
   <div class="metric-grid">
     <article class="metric"><span>Files loaded</span><strong>{{ report.dataset.files_loaded }}</strong></article>
     <article class="metric"><span>CSV records loaded</span><strong>{{ report.dataset.records_loaded }}</strong></article>
@@ -30,7 +51,7 @@
 
 <section class="panel">
   <h2>All imported tables</h2>
-  <p class="muted">These counts are loaded directly from the bundled CSVs at analysis time, not copied from a hard-coded dashboard summary.</p>
+  <p class="muted">These counts are loaded from the currently active dataset at analysis time, not copied from a hard-coded dashboard summary.</p>
   <div class="table-wrap"><table><thead><tr><th>Dataset file</th><th>Records</th></tr></thead><tbody>
   {% for name, count in report.dataset.row_counts|dictsort %}
     <tr><td>{{ name }}.csv</td><td>{{ count }}</td></tr>

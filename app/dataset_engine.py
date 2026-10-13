@@ -11,6 +11,18 @@ from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "ripple_dataset"
 
+def active_dataset_dir(instance_path: Path | str | None = None) -> Path:
+    """Return the currently activated, fully validated dataset or bundled baseline.
+
+    Uploaded activity tables are activated only after validation against the rest of
+    the campus model. A failed upload never changes the active dataset.
+    """
+    root = Path(instance_path) if instance_path else Path(__file__).resolve().parent.parent / "instance"
+    candidate = root / "active_ripple_dataset"
+    if candidate.is_dir() and (candidate / "incident.json").is_file():
+        return candidate
+    return DATA_DIR
+
 TABLES = (
     "activities", "activity_modes", "buildings", "constraints", "dependencies",
     "engineering_personnel", "facility_contacts", "parts", "room_availability",

@@ -9,6 +9,7 @@ import time
 import threading
 import os
 import tempfile
+import shutil
 from pathlib import Path
 import smtplib
 import ssl
@@ -292,6 +293,7 @@ def register_routes(app):
         scored_rows = []
         summary = None
         errors = []
+        integration_messages = []
         expected = {'activity_id', 'activity_name', 'priority', 'priority_weight'}
         if request.method == 'POST':
             upload = request.files.get('file')
@@ -351,6 +353,55 @@ def register_routes(app):
                                         {**row, 'priority': priority, 'priority_weight': weight}
                                         for row, priority, weight in validated
                                     ])
+                                    # Also attempt to activate this table in the full campus model.
+                                    # Scoring alone is not evidence of a valid ripple-analysis dataset.
+                                    from .dataset_engine import DATA_DIR, TABLES, active_dataset_dir, load_dataset, validate_dataset
+                                    current_dataset = active_dataset_dir(app.instance_path)
+                                    with (current_dataset / 'activities.csv').open(encoding='utf-8-sig', newline='') as baseline_stream:
+                                        expected_activity_headers = set(csv.DictReader(baseline_stream).fieldnames or [])
+                                    upload_headers = set(headers)
+                                    if expected_activity_headers.issubset(upload_headers):
+                                        try:
+                                            instance_root = Path(app.instance_path)
+                                            instance_root.mkdir(parents=True, exist_ok=True)
+                                            staging = Path(tempfile.mkdtemp(prefix='.ripple-dataset-stage-', dir=str(instance_root)))
+                                            try:
+                                                for table_name in TABLES:
+                                                    shutil.copy2(current_dataset / f'{table_name}.csv', staging / f'{table_name}.csv')
+                                                shutil.copy2(current_dataset / 'incident.json', staging / 'incident.json')
+                                                for optional_name in ('dataset_manifest.json', 'README.md', 'START_HERE_STUDENTS.md', 'ACRONYMS_AND_DATA_GLOSSARY.md', 'optimization_rules.md'):
+                                                    optional_path = current_dataset / optional_name
+                                                    if optional_path.is_file():
+                                                        shutil.copy2(optional_path, staging / optional_name)
+                                                (staging / 'activities.csv').write_bytes(raw)
+                                                candidate = load_dataset(staging)
+                                                validation = validate_dataset(candidate)
+                                                if validation['valid']:
+                                                    target_dataset = instance_root / 'active_ripple_dataset'
+                                                    backup = instance_root / '.active_ripple_dataset_previous'
+                                                    if backup.exists():
+                                                        shutil.rmtree(backup)
+                                                    if target_dataset.exists():
+                                                        os.replace(target_dataset, backup)
+                                                    try:
+                                                        os.replace(staging, target_dataset)
+                                                    except Exception:
+                                                        if backup.exists() and not target_dataset.exists():
+                                                            os.replace(backup, target_dataset)
+                                                        raise
+                                                    if backup.exists():
+                                                        shutil.rmtree(backup)
+                                                    integration_messages.append(f'Full ripple dataset updated: {len(scored_rows)} activities are now used by dataset analysis, direct-impact tracing, and dependency propagation. Other campus tables and incident definitions remain from the bundled dataset.')
+                                                else:
+                                                    integration_messages.append('Priority scores were calculated, but the upload was NOT activated for ripple analysis because cross-table validation failed: ' + '; '.join(validation['errors'][:8]))
+                                            finally:
+                                                if staging.exists():
+                                                    shutil.rmtree(staging, ignore_errors=True)
+                                        except (OSError, ValueError, csv.Error) as exc:
+                                            app.logger.exception('Could not activate uploaded activity dataset')
+                                            integration_messages.append('Priority scores were calculated, but the full dataset could not be activated. Existing ripple-analysis data remains unchanged.')
+                                    else:
+                                        integration_messages.append('Priority scores were calculated. This CSV is missing one or more full activity-table columns, so it was not activated for ripple analysis.')
                                     # Keep the latest valid upload for reproducibility; use atomic replacement.
                                     target = Path(app.instance_path) / 'activity_priority_latest.csv'
                                     target.parent.mkdir(parents=True, exist_ok=True)
@@ -386,7 +437,7 @@ def register_routes(app):
                     except OSError:
                         app.logger.exception('Could not save activity priority CSV')
                         errors.append('The CSV was scored but could not be saved due to a file permission or storage error. Please retry.')
-        return render_template('activity_priority.html', rows=scored_rows, summary=summary, errors=errors)
+        return render_template('activity_priority.html', rows=scored_rows, summary=summary, errors=errors, integration_messages=integration_messages)
 
     @app.get('/activity-priority/download')
     @login_required
@@ -402,40 +453,161 @@ def register_routes(app):
         response.headers['X-Content-Type-Options'] = 'nosniff'
         return response
 
+    @app.post('/dataset-upload')
+    @login_required
+    def dataset_upload():
+        """Validate and atomically activate a complete THE RIPPLE dataset ZIP."""
+        import zipfile
+        upload = request.files.get('dataset_file')
+        token = request.form.get('_csrf_token', '')
+        expected_token = session.get('_csrf_token', '')
+        if not token or not expected_token or not hmac.compare_digest(token, expected_token):
+            abort(400, description='Invalid CSRF token.')
+        if not upload or not upload.filename or not upload.filename.lower().endswith('.zip'):
+            flash('Choose the complete THE RIPPLE dataset ZIP (not an individual CSV).', 'error')
+            return redirect(url_for('dataset_analysis'))
+        raw = upload.stream.read(5 * 1024 * 1024 + 1)
+        if len(raw) > 5 * 1024 * 1024:
+            flash('Dataset ZIP must be 5 MB or smaller.', 'error')
+            return redirect(url_for('dataset_analysis'))
+        from .dataset_engine import DATA_DIR, TABLES, load_dataset, validate_dataset
+        required = {f'{name}.csv' for name in TABLES} | {'incident.json'}
+        optional = {'dataset_manifest.json', 'README.md', 'START_HERE_STUDENTS.md',
+                    'ACRONYMS_AND_DATA_GLOSSARY.md', 'optimization_rules.md'}
+        instance_root = Path(app.instance_path)
+        instance_root.mkdir(parents=True, exist_ok=True)
+        staging = Path(tempfile.mkdtemp(prefix='.ripple-full-stage-', dir=str(instance_root)))
+        try:
+            try:
+                with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                    candidates = {}
+                    total_uncompressed = 0
+                    for info in archive.infolist():
+                        if info.is_dir():
+                            continue
+                        basename = info.filename.replace('\\', '/').rsplit('/', 1)[-1]
+                        if basename in required | optional:
+                            if basename in candidates:
+                                raise ValueError(f'Duplicate dataset file in ZIP: {basename}')
+                            if info.file_size > 2 * 1024 * 1024:
+                                raise ValueError(f'{basename} is unexpectedly large.')
+                            total_uncompressed += info.file_size
+                            if total_uncompressed > 10 * 1024 * 1024:
+                                raise ValueError('Uncompressed dataset files exceed 10 MB.')
+                            candidates[basename] = info
+                    missing = sorted(required - set(candidates))
+                    if missing:
+                        raise ValueError('Dataset ZIP is incomplete. Missing: ' + ', '.join(missing))
+                    for name in sorted(required | optional):
+                        info = candidates.get(name)
+                        if not info:
+                            continue
+                        data = archive.read(info)
+                        if name.endswith('.csv'):
+                            data.decode('utf-8-sig', errors='strict')
+                        elif name == 'incident.json':
+                            json.loads(data.decode('utf-8-sig'))
+                        (staging / name).write_bytes(data)
+            except (zipfile.BadZipFile, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+                flash('Dataset ZIP was not activated: ' + str(exc), 'error')
+                return redirect(url_for('dataset_analysis'))
+
+            # Require the supported table schemas as well as valid references.
+            schema_errors = []
+            for table_name in TABLES:
+                with (DATA_DIR / f'{table_name}.csv').open(encoding='utf-8-sig', newline='') as schema_stream:
+                    expected_columns = set(csv.DictReader(schema_stream).fieldnames or [])
+                with (staging / f'{table_name}.csv').open(encoding='utf-8-sig', newline='') as uploaded_stream:
+                    uploaded_columns = set(csv.DictReader(uploaded_stream).fieldnames or [])
+                missing_columns = sorted(expected_columns - uploaded_columns)
+                if missing_columns:
+                    schema_errors.append(f'{table_name}.csv is missing columns: {", ".join(missing_columns)}')
+            if schema_errors:
+                flash('Dataset schema validation failed; the previous active dataset was kept. ' +
+                      '; '.join(schema_errors[:10]), 'error')
+                return redirect(url_for('dataset_analysis'))
+
+            candidate = load_dataset(staging)
+            validation = validate_dataset(candidate)
+            if not validation['valid']:
+                flash('Dataset validation failed; the previous active dataset was kept. ' +
+                      '; '.join(validation['errors'][:10]), 'error')
+                return redirect(url_for('dataset_analysis'))
+
+            target = instance_root / 'active_ripple_dataset'
+            backup = instance_root / '.active_ripple_dataset_previous'
+            if backup.exists():
+                shutil.rmtree(backup)
+            if target.exists():
+                os.replace(target, backup)
+            try:
+                os.replace(staging, target)
+            except Exception:
+                if backup.exists() and not target.exists():
+                    os.replace(backup, target)
+                raise
+            if backup.exists():
+                shutil.rmtree(backup)
+            flash(f'Complete dataset activated successfully: {len(TABLES)} CSV tables, '
+                  f'{sum(validation["row_counts"].values())} CSV records, and incident.json. '
+                  'Scenario analysis will now use these uploaded files.', 'success')
+            return redirect(url_for('dataset_analysis'))
+        except Exception:
+            app.logger.exception('Complete THE RIPPLE dataset upload failed')
+            flash('Dataset upload failed unexpectedly; the previous active dataset was preserved.', 'error')
+            return redirect(url_for('dataset_analysis'))
+        finally:
+            if staging.exists():
+                shutil.rmtree(staging, ignore_errors=True)
+
     @app.get('/dataset-analysis')
     @login_required
     def dataset_analysis():
-        from .dataset_engine import dataset_report
+        from .dataset_engine import DATA_DIR, active_dataset_dir, dataset_report
         selected_variant = (request.args.get('variant') or 'V1').upper()
         if selected_variant not in {'V1', 'V2', 'V3'}:
             selected_variant = 'V1'
-        report = dataset_report(selected_variant)
+        report = dataset_report(selected_variant, active_dataset_dir(app.instance_path))
         return render_template('dataset_analysis.html', selected_variant=selected_variant,
                                report=report, result=report.get('analysis', {}),
-                               validation=report.get('validation', {}))
+                               validation=report.get('validation', {}),
+                               uploaded_dataset=(active_dataset_dir(app.instance_path) != DATA_DIR))
 
     @app.get('/api/dataset-analysis')
     @login_required
     def api_dataset_analysis():
-        from .dataset_engine import dataset_report
+        from .dataset_engine import active_dataset_dir, dataset_report
         selected_variant = (request.args.get('variant') or 'V1').upper()
         if selected_variant not in {'V1', 'V2', 'V3'}:
             return make_response(json.dumps({'ok': False, 'error': 'variant must be V1, V2, or V3'}),
                                  400, {'Content-Type': 'application/json; charset=utf-8'})
-        payload = dataset_report(selected_variant)
+        payload = dataset_report(selected_variant, active_dataset_dir(app.instance_path))
         response = make_response(json.dumps(payload, ensure_ascii=False, indent=2), 200 if payload.get('ok') else 422)
         response.headers['Content-Type'] = 'application/json; charset=utf-8'
         response.headers['Cache-Control'] = 'private, no-store'
         response.headers['X-Content-Type-Options'] = 'nosniff'
         return response
 
+    @app.post('/dataset-reset')
+    @login_required
+    def dataset_reset():
+        submitted = request.form.get('_csrf_token', '')
+        expected_token = session.get('_csrf_token', '')
+        if not submitted or not expected_token or not hmac.compare_digest(submitted, expected_token):
+            abort(400, description='Invalid CSRF token.')
+        target = Path(app.instance_path) / 'active_ripple_dataset'
+        if target.exists():
+            shutil.rmtree(target)
+        flash('Ripple analysis has been reset to the bundled baseline dataset.', 'success')
+        return redirect(url_for('dataset_analysis'))
+
     @app.get('/dataset-download.zip')
     @login_required
     def dataset_download():
         from pathlib import Path
         import zipfile
-        from .dataset_engine import DATA_DIR, TABLES
-        root = Path(DATA_DIR)
+        from .dataset_engine import TABLES, active_dataset_dir
+        root = active_dataset_dir(app.instance_path)
         output = io.BytesIO()
         with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
             for name in (*[f'{table}.csv' for table in TABLES], 'incident.json',
